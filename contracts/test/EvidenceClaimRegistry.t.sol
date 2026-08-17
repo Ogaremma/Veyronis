@@ -14,6 +14,7 @@ contract EvidenceClaimRegistryTest is Test {
 
     bytes32 internal constant AGREEMENT = keccak256("agreement");
     bytes32 internal constant OTHER_AGREEMENT = keccak256("other agreement");
+    bytes32 internal constant POLICY = keccak256("evidence policy");
     bytes32 internal constant EVIDENCE_TYPE = keccak256("SOURCE_PAYMENT");
     bytes32 internal constant SOURCE_TX = keccak256("source transaction");
     uint64 internal constant SOURCE_CHAIN_KEY = 1;
@@ -75,6 +76,14 @@ contract EvidenceClaimRegistryTest is Test {
         EvidenceClaimRegistry.Claim memory claim = _claim(escrow, OTHER_AGREEMENT, SOURCE_TX, buyer);
         vm.prank(verifier);
         vm.expectRevert(EvidenceClaimRegistry.WrongAgreement.selector);
+        registry.submitVerifiedClaim(claim);
+    }
+
+    function testWrongEvidencePolicyRejected() public {
+        EvidenceClaimRegistry.Claim memory claim = _claim(escrow, AGREEMENT, SOURCE_TX, buyer);
+        claim.evidencePolicyCommitment = keccak256("modified policy");
+        vm.prank(verifier);
+        vm.expectRevert(EvidenceClaimRegistry.WrongEvidencePolicy.selector);
         registry.submitVerifiedClaim(claim);
     }
 
@@ -229,7 +238,9 @@ contract EvidenceClaimRegistryTest is Test {
     }
 
     function _deployEscrow(bytes32 agreement) internal returns (VeyronisEscrow) {
-        return new VeyronisEscrow(buyer, seller, arbitrator, agreement, PRICE, address(registry));
+        return new VeyronisEscrow(
+            buyer, seller, arbitrator, agreement, POLICY, PRICE, address(registry)
+        );
     }
 
     function _fundAndDispute(VeyronisEscrow target, bytes32 evidenceCommitment) internal {
@@ -248,6 +259,7 @@ contract EvidenceClaimRegistryTest is Test {
         return EvidenceClaimRegistry.Claim({
             escrow: address(target),
             agreementCommitment: agreement,
+            evidencePolicyCommitment: POLICY,
             evidenceCommitment: _evidenceCommitment(sourceTransactionHash, subject),
             evidenceType: EVIDENCE_TYPE,
             sourceChainKey: SOURCE_CHAIN_KEY,
@@ -262,7 +274,7 @@ contract EvidenceClaimRegistryTest is Test {
         returns (bytes32)
     {
         return registry.computeEvidenceCommitment(
-            EVIDENCE_TYPE, SOURCE_CHAIN_KEY, sourceTransactionHash, subject
+            POLICY, EVIDENCE_TYPE, SOURCE_CHAIN_KEY, sourceTransactionHash, subject
         );
     }
 }

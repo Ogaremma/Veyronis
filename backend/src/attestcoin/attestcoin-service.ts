@@ -1,11 +1,12 @@
 import { blockProver, chainInfo, proofProvider } from "@gluwa/usc-sdk";
-import { JsonRpcProvider, Transaction } from "ethers";
+import { JsonRpcProvider } from "ethers";
 import type { AttestcoinProofRequest, VerificationFailureCode } from "@veyronis/shared";
 import type { AppConfig } from "../config.js";
 import type {
   CryptographicProofVerifier,
   ProofVerificationResult,
 } from "./verifier-types.js";
+import { decodeAttestedTransaction } from "./attested-transaction-decoder.js";
 
 export class AttestcoinService implements CryptographicProofVerifier {
   readonly creditcoinProvider: JsonRpcProvider;
@@ -52,19 +53,6 @@ export class AttestcoinService implements CryptographicProofVerifier {
         return failure("TRANSACTION_HASH_MISMATCH", "The proof metadata contains another transaction hash");
       }
 
-      let transaction: Transaction;
-      try {
-        transaction = Transaction.from(proof.txBytes);
-      } catch {
-        return failure("MISSING_TRANSACTION_CONTEXT", "The proof transaction bytes are malformed");
-      }
-      if (!transaction.hash || !transaction.from) {
-        return failure("MISSING_TRANSACTION_CONTEXT", "The proof does not contain a signed transaction context");
-      }
-      if (transaction.hash.toLowerCase() !== reference.transactionHash.toLowerCase()) {
-        return failure("TRANSACTION_HASH_MISMATCH", "The verified transaction bytes hash to another transaction");
-      }
-
       const transactionIndex = await this.blockProver.computeTransactionIndex(proof.merkleProof);
       if (transactionIndex !== proof.txIndex) {
         return failure("INVALID_PROOF", "The Merkle proof transaction index does not match the proof metadata");
@@ -81,6 +69,16 @@ export class AttestcoinService implements CryptographicProofVerifier {
         return failure("PROOF_VERIFICATION_FAILURE", "Creditcoin rejected the transaction inclusion proof");
       }
 
+      let transaction;
+      try {
+        transaction = decodeAttestedTransaction(proof.txBytes);
+      } catch {
+        return failure("MISSING_TRANSACTION_CONTEXT", "The verified transaction context is malformed");
+      }
+      if (transaction.hash.toLowerCase() !== reference.transactionHash.toLowerCase()) {
+        return failure("TRANSACTION_HASH_MISMATCH", "The verified transaction bytes hash to another transaction");
+      }
+
       return {
         ok: true,
         transaction: {
@@ -90,6 +88,11 @@ export class AttestcoinService implements CryptographicProofVerifier {
           transactionIndex,
           from: transaction.from,
           to: transaction.to,
+          chainId: transaction.chainId,
+          value: transaction.value,
+          data: transaction.data,
+          receiptStatus: transaction.receiptStatus,
+          logs: transaction.logs,
         },
       };
     } catch {

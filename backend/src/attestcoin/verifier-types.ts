@@ -1,5 +1,6 @@
 import type {
   AttestcoinProofRequest,
+  EvidencePolicy,
   VerificationFailureCode,
   VerifiedEvidenceClaim,
 } from "@veyronis/shared";
@@ -11,6 +12,17 @@ export interface VerifiedSourceTransaction {
   transactionIndex: number;
   from: string;
   to: string | null;
+  chainId: string;
+  value: string;
+  data: string;
+  receiptStatus: number;
+  logs: VerifiedSourceLog[];
+}
+
+export interface VerifiedSourceLog {
+  address: string;
+  topics: string[];
+  data: string;
 }
 
 export type ProofVerificationResult =
@@ -24,15 +36,21 @@ export interface CryptographicProofVerifier {
 export interface InterpretedEvidence {
   evidenceType: string;
   subject: string;
+  amount: string;
 }
 
-export interface VerifiedEvidenceInterpreter {
-  interpret(transaction: VerifiedSourceTransaction): InterpretedEvidence;
+export type PolicyEvaluationResult =
+  | { ok: true; evidence: InterpretedEvidence }
+  | { ok: false; code: VerificationFailureCode; message: string };
+
+export interface EvidencePolicyEvaluator {
+  evaluate(transaction: VerifiedSourceTransaction, policy: EvidencePolicy): PolicyEvaluationResult;
 }
 
 export interface EscrowDisputeContext {
   escrowAddress: string;
   agreementCommitment: string;
+  evidencePolicyCommitment: string;
   activeEvidenceCommitment: string;
   buyer: string;
   seller: string;

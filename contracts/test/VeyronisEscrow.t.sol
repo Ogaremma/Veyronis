@@ -51,6 +51,7 @@ contract VeyronisEscrowTest is Test {
     address internal evidenceRegistry = makeAddr("evidenceRegistry");
 
     bytes32 internal constant AGREEMENT = keccak256("agreement");
+    bytes32 internal constant POLICY = keccak256("evidence policy");
     bytes32 internal constant EVIDENCE = keccak256("evidence");
     uint256 internal constant PRICE = 10 ether;
 
@@ -76,6 +77,7 @@ contract VeyronisEscrowTest is Test {
         assertEq(escrow.seller(), seller);
         assertEq(escrow.arbitrator(), arbitrator);
         assertEq(escrow.agreementCommitment(), AGREEMENT);
+        assertEq(escrow.evidencePolicyCommitment(), POLICY);
         assertEq(escrow.requiredAmount(), PRICE);
         assertEq(escrow.evidenceRegistry(), evidenceRegistry);
         assertEq(uint256(escrow.state()), uint256(VeyronisEscrow.State.AwaitingPayment));
@@ -83,29 +85,31 @@ contract VeyronisEscrowTest is Test {
 
     function testConstructorRejectsEachZeroAddress() public {
         vm.expectRevert(VeyronisEscrow.ZeroAddress.selector);
-        new VeyronisEscrow(address(0), seller, arbitrator, AGREEMENT, PRICE, evidenceRegistry);
+        new VeyronisEscrow(address(0), seller, arbitrator, AGREEMENT, POLICY, PRICE, evidenceRegistry);
         vm.expectRevert(VeyronisEscrow.ZeroAddress.selector);
-        new VeyronisEscrow(buyer, address(0), arbitrator, AGREEMENT, PRICE, evidenceRegistry);
+        new VeyronisEscrow(buyer, address(0), arbitrator, AGREEMENT, POLICY, PRICE, evidenceRegistry);
         vm.expectRevert(VeyronisEscrow.ZeroAddress.selector);
-        new VeyronisEscrow(buyer, seller, address(0), AGREEMENT, PRICE, evidenceRegistry);
+        new VeyronisEscrow(buyer, seller, address(0), AGREEMENT, POLICY, PRICE, evidenceRegistry);
     }
 
     function testConstructorRejectsDuplicateRoles() public {
         vm.expectRevert(VeyronisEscrow.RolesMustBeDistinct.selector);
-        new VeyronisEscrow(buyer, buyer, arbitrator, AGREEMENT, PRICE, evidenceRegistry);
+        new VeyronisEscrow(buyer, buyer, arbitrator, AGREEMENT, POLICY, PRICE, evidenceRegistry);
         vm.expectRevert(VeyronisEscrow.RolesMustBeDistinct.selector);
-        new VeyronisEscrow(buyer, seller, buyer, AGREEMENT, PRICE, evidenceRegistry);
+        new VeyronisEscrow(buyer, seller, buyer, AGREEMENT, POLICY, PRICE, evidenceRegistry);
         vm.expectRevert(VeyronisEscrow.RolesMustBeDistinct.selector);
-        new VeyronisEscrow(buyer, seller, seller, AGREEMENT, PRICE, evidenceRegistry);
+        new VeyronisEscrow(buyer, seller, seller, AGREEMENT, POLICY, PRICE, evidenceRegistry);
     }
 
     function testConstructorRejectsZeroCommitmentAndAmount() public {
         vm.expectRevert(VeyronisEscrow.InvalidAgreementCommitment.selector);
-        new VeyronisEscrow(buyer, seller, arbitrator, bytes32(0), PRICE, evidenceRegistry);
+        new VeyronisEscrow(buyer, seller, arbitrator, bytes32(0), POLICY, PRICE, evidenceRegistry);
+        vm.expectRevert(VeyronisEscrow.InvalidEvidencePolicyCommitment.selector);
+        new VeyronisEscrow(buyer, seller, arbitrator, AGREEMENT, bytes32(0), PRICE, evidenceRegistry);
         vm.expectRevert(VeyronisEscrow.InvalidRequiredAmount.selector);
-        new VeyronisEscrow(buyer, seller, arbitrator, AGREEMENT, 0, evidenceRegistry);
+        new VeyronisEscrow(buyer, seller, arbitrator, AGREEMENT, POLICY, 0, evidenceRegistry);
         vm.expectRevert(VeyronisEscrow.InvalidEvidenceRegistry.selector);
-        new VeyronisEscrow(buyer, seller, arbitrator, AGREEMENT, PRICE, address(0));
+        new VeyronisEscrow(buyer, seller, arbitrator, AGREEMENT, POLICY, PRICE, address(0));
     }
 
     function testDepositExactAmountAndEvent() public {
@@ -506,7 +510,7 @@ contract VeyronisEscrowTest is Test {
         uint256 price_
     ) internal returns (VeyronisEscrow) {
         return new VeyronisEscrow(
-            buyer_, seller_, arbitrator_, agreement_, price_, evidenceRegistry
+            buyer_, seller_, arbitrator_, agreement_, POLICY, price_, evidenceRegistry
         );
     }
 

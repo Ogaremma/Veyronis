@@ -20,6 +20,7 @@ contract VeyronisEscrow {
     error ZeroAddress();
     error RolesMustBeDistinct();
     error InvalidAgreementCommitment();
+    error InvalidEvidencePolicyCommitment();
     error InvalidRequiredAmount();
     error InvalidEvidenceRegistry();
     error Unauthorized();
@@ -47,6 +48,7 @@ contract VeyronisEscrow {
     address public immutable seller;
     address public immutable arbitrator;
     bytes32 public immutable agreementCommitment;
+    bytes32 public immutable evidencePolicyCommitment;
     uint256 public immutable requiredAmount;
     address public immutable evidenceRegistry;
 
@@ -63,6 +65,7 @@ contract VeyronisEscrow {
         address seller_,
         address arbitrator_,
         bytes32 agreementCommitment_,
+        bytes32 evidencePolicyCommitment_,
         uint256 requiredAmount_,
         address evidenceRegistry_
     ) {
@@ -73,6 +76,9 @@ contract VeyronisEscrow {
             revert RolesMustBeDistinct();
         }
         if (agreementCommitment_ == bytes32(0)) revert InvalidAgreementCommitment();
+        if (evidencePolicyCommitment_ == bytes32(0)) {
+            revert InvalidEvidencePolicyCommitment();
+        }
         if (requiredAmount_ == 0) revert InvalidRequiredAmount();
         if (evidenceRegistry_ == address(0)) revert InvalidEvidenceRegistry();
 
@@ -80,6 +86,7 @@ contract VeyronisEscrow {
         seller = seller_;
         arbitrator = arbitrator_;
         agreementCommitment = agreementCommitment_;
+        evidencePolicyCommitment = evidencePolicyCommitment_;
         requiredAmount = requiredAmount_;
         evidenceRegistry = evidenceRegistry_;
     }

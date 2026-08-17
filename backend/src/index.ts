@@ -3,13 +3,14 @@ export {
   AttestcoinVerifier,
   computeClaimId,
   computeEvidenceCommitment,
+  computeEvidencePolicyCommitment,
   computeSourceEvidenceKey,
 } from "./attestcoin/attestcoin-verifier.js";
 export {
   EthersEscrowContextReader,
   EthersEvidenceClaimRegistryGateway,
 } from "./attestcoin/ethers-gateways.js";
-export { SourceTransactionSenderInterpreter } from "./attestcoin/source-transaction-interpreter.js";
+export { SourceTransactionPolicyEvaluator } from "./attestcoin/source-transaction-interpreter.js";
 export {
   createLiveAttestcoinVerifier,
   SOURCE_PAYMENT_EVIDENCE_TYPE,
@@ -20,7 +21,7 @@ export type {
   EscrowContextReader,
   EvidenceClaimRegistryGateway,
   ProofVerificationResult,
-  VerifiedEvidenceInterpreter,
+  EvidencePolicyEvaluator,
   VerifiedSourceTransaction,
 } from "./attestcoin/verifier-types.js";
 export type {

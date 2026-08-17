@@ -6,7 +6,7 @@ import {
   EthersEscrowContextReader,
   EthersEvidenceClaimRegistryGateway,
 } from "./ethers-gateways.js";
-import { SourceTransactionSenderInterpreter } from "./source-transaction-interpreter.js";
+import { SourceTransactionPolicyEvaluator } from "./source-transaction-interpreter.js";
 
 export const SOURCE_PAYMENT_EVIDENCE_TYPE = id("SOURCE_PAYMENT");
 
@@ -15,7 +15,7 @@ export function createLiveAttestcoinVerifier(config: AppConfig): AttestcoinVerif
   const signer = new Wallet(config.VEYRONIS_VERIFIER_PRIVATE_KEY, service.creditcoinProvider);
   return new AttestcoinVerifier(
     service,
-    new SourceTransactionSenderInterpreter(SOURCE_PAYMENT_EVIDENCE_TYPE),
+    new SourceTransactionPolicyEvaluator(),
     new EthersEscrowContextReader(service.creditcoinProvider),
     new EthersEvidenceClaimRegistryGateway(config.VEYRONIS_EVIDENCE_REGISTRY_ADDRESS, signer),
   );

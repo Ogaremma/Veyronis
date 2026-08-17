@@ -22,19 +22,20 @@ The claim contains only:
 
 - `escrow`: binds the claim to one deployed custody instance.
 - `agreementCommitment`: prevents evidence for a different agreement at the same conceptual workflow from matching.
+- `evidencePolicyCommitment`: binds the claim to the immutable agreement-specific policy evaluated by the verifier.
 - `evidenceCommitment`: the value selected when the dispute was opened; it commits to the normalized objective context.
 - `evidenceType`: domain separation, such as a source-chain payment rather than delivery metadata.
 - `sourceChainKey`: prevents an equivalent-looking transaction on another chain from matching.
 - `sourceTransactionHash`: identifies the objective source-chain transaction.
 - `subject`: binds the evidence to the buyer or seller it concerns.
 
-No caller-provided timestamp is accepted. Acceptance time is available from the Creditcoin transaction/block, while source deadlines belong in the agreement rules in a later phase. A separate claimant field is unnecessary: the authorized verifier submits the normalized claim, and the subject captures the participant the evidence concerns.
+No caller-provided timestamp is accepted. Freshness uses only the source block height authenticated by the proof and committed policy bounds. A separate claimant field is unnecessary: the authorized verifier submits the normalized claim, and the subject captures the participant the evidence concerns.
 
 ### Deterministic matching
 
 The dispute evidence commitment is:
 
-`keccak256(abi.encode(evidenceType, sourceChainKey, sourceTransactionHash, subject))`
+`keccak256(abi.encode(evidencePolicyCommitment, evidenceType, sourceChainKey, sourceTransactionHash, subject))`
 
 The registry recomputes it and requires equality with both the claim and the escrow's `activeEvidenceCommitment`. It separately reads the escrow's agreement commitment, buyer, seller, and state. The claim ID additionally hashes the escrow address and agreement commitment with every normalized claim field. Consequently, changing the escrow, agreement, chain, transaction, type, or subject changes the claim ID or fails the active commitment check.
 
@@ -55,32 +56,32 @@ Verifier authorization establishes who may assert that proof verification succee
 
 ## Evidence threat model
 
-| Threat | Attacker capability and attack | Impact | Mitigation | Layer |
-| --- | --- | --- | --- | --- |
-| Replayed proof | Resubmit an accepted normalized proof | Duplicate influence or repeated processing | Consumed claim ID and one verified claim per escrow | On-chain |
-| Wrong escrow | Replace the escrow address | Evidence affects unrelated custody | Escrow address is in claim ID; registry reads target escrow context | On-chain |
-| Wrong agreement | Supply another agreement commitment | Unrelated terms gain evidentiary weight | Exact comparison with immutable escrow agreement | On-chain |
-| Wrong chain | Reuse equivalent transaction data from another chain | False source context | Chain key is inside evidence commitment, source key, and claim ID | On-chain |
-| Forged claim | Submit metadata without a valid proof | False evidence recorded | Only authorized verifier may submit; Phase 4 adapter must verify Attestcoin proof | On-chain plus Phase 4 |
-| Unauthorized submission | Buyer, seller, frontend, or backend calls registry | Unverified evidence accepted | Immutable verifier authorization | On-chain |
-| Malicious backend | Fabricates status or normalized data | Misleading UI or attempted bad submission | Backend cannot accept claims or settle; chain state is authoritative | On-chain |
-| Malicious frontend | Displays false status or crafts calls | User deception or reverted calls | Wallet-visible transactions and on-chain validation | On-chain and client UX |
-| Malicious buyer | Reuses unrelated payment or subject | False buyer-favorable evidence | Active commitment, participant subject, source binding, arbitrator review | On-chain plus human review |
-| Malicious seller | Reuses unrelated delivery/payment fact | False seller-favorable evidence | Same semantic checks and arbitrator review | On-chain plus human review |
-| Malicious arbitrator | Ignores evidence or chooses unfair outcome | Incorrect settlement | Explicit known trust assumption; evidence creates audit trail but cannot eliminate subjective arbitration | Governance/off-chain |
-| Compromised proof provider | Returns fabricated proof material | Adapter may attempt false claim | Phase 4 must verify through Creditcoin precompile, not trust API response | On-chain proof verification |
-| Stale evidence | Old transaction reused after relevant window | Incorrect dispute context | Transaction is committed; agreement-specific deadline validation remains Phase 4 limitation | Future on-chain rule |
-| Conflicting evidence | Multiple valid facts point to different outcomes | Ambiguous arbitration | One active verified claim in Phase 3; conflicts remain visible off-chain for arbitrator review | On-chain limit plus off-chain review |
-| Duplicate evidence | Same source fact repackaged | Multiple claims appear independent | Global source evidence key binding | On-chain |
-| Post-settlement evidence | Submit after complete/refunded/cancelled | Reopen or influence terminal escrow | Registry and escrow require `Disputed` state | On-chain |
-| Consumed claim | Submit a claim already accepted | Replay | `consumedClaims` mapping | On-chain |
+| Threat                     | Attacker capability and attack                       | Impact                                     | Mitigation                                                                                                | Layer                                |
+| -------------------------- | ---------------------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| Replayed proof             | Resubmit an accepted normalized proof                | Duplicate influence or repeated processing | Consumed claim ID and one verified claim per escrow                                                       | On-chain                             |
+| Wrong escrow               | Replace the escrow address                           | Evidence affects unrelated custody         | Escrow address is in claim ID; registry reads target escrow context                                       | On-chain                             |
+| Wrong agreement            | Supply another agreement commitment                  | Unrelated terms gain evidentiary weight    | Exact comparison with immutable escrow agreement                                                          | On-chain                             |
+| Wrong chain                | Reuse equivalent transaction data from another chain | False source context                       | Chain key is inside evidence commitment, source key, and claim ID                                         | On-chain                             |
+| Forged claim               | Submit metadata without a valid proof                | False evidence recorded                    | Only authorized verifier may submit; Phase 4 adapter must verify Attestcoin proof                         | On-chain plus Phase 4                |
+| Unauthorized submission    | Buyer, seller, frontend, or backend calls registry   | Unverified evidence accepted               | Immutable verifier authorization                                                                          | On-chain                             |
+| Malicious backend          | Fabricates status or normalized data                 | Misleading UI or attempted bad submission  | Backend cannot accept claims or settle; chain state is authoritative                                      | On-chain                             |
+| Malicious frontend         | Displays false status or crafts calls                | User deception or reverted calls           | Wallet-visible transactions and on-chain validation                                                       | On-chain and client UX               |
+| Malicious buyer            | Reuses unrelated payment or subject                  | False buyer-favorable evidence             | Active commitment, participant subject, source binding, arbitrator review                                 | On-chain plus human review           |
+| Malicious seller           | Reuses unrelated delivery/payment fact               | False seller-favorable evidence            | Same semantic checks and arbitrator review                                                                | On-chain plus human review           |
+| Malicious arbitrator       | Ignores evidence or chooses unfair outcome           | Incorrect settlement                       | Explicit known trust assumption; evidence creates audit trail but cannot eliminate subjective arbitration | Governance/off-chain                 |
+| Compromised proof provider | Returns fabricated proof material                    | Adapter may attempt false claim            | Phase 4 must verify through Creditcoin precompile, not trust API response                                 | On-chain proof verification          |
+| Stale evidence             | Old transaction reused after the agreed window       | Incorrect dispute context                  | Immutable policy commitment and verified inclusive source-block bounds                                    | Verifier plus on-chain commitment    |
+| Conflicting evidence       | Multiple valid facts point to different outcomes     | Ambiguous arbitration                      | One active verified claim in Phase 3; conflicts remain visible off-chain for arbitrator review            | On-chain limit plus off-chain review |
+| Duplicate evidence         | Same source fact repackaged                          | Multiple claims appear independent         | Global source evidence key binding                                                                        | On-chain                             |
+| Post-settlement evidence   | Submit after complete/refunded/cancelled             | Reopen or influence terminal escrow        | Registry and escrow require `Disputed` state                                                              | On-chain                             |
+| Consumed claim             | Submit a claim already accepted                      | Replay                                     | `consumedClaims` mapping                                                                                  | On-chain                             |
 
 ### Security assumptions and limitations
 
 - The authorized verifier is trusted only to report proof verification accurately until Phase 4 replaces that assumption with the Attestcoin precompile adapter.
 - The arbitrator remains a trusted dispute decision-maker. Verified evidence is advisory and auditable, not an automatic outcome rule.
 - Phase 3 supports one verified objective claim per escrow dispute. Multi-claim conflict rules are intentionally deferred.
-- Deadline and source-block freshness rules are not yet encoded because the current agreement model has no explicit evidence deadline.
+- Freshness is expressed in verified source block heights. Timestamp rules remain unsupported because the current proof does not independently authenticate a source timestamp.
 - The source evidence key intentionally treats a normalized source fact as exclusive to one escrow. Agreements that legitimately share one transaction require a future explicit allocation model rather than weakening replay protection.
 
 ## Attestcoin trust model
@@ -125,7 +126,52 @@ The proof builder remains untrusted: it can deny service or return malformed/sub
 
 Live verification requires `CREDITCOIN_RPC_URL`, `ATTESTCOIN_PROOF_BUILDER_URL`, `SEPOLIA_CHAIN_KEY`, `VEYRONIS_EVIDENCE_REGISTRY_ADDRESS`, and `VEYRONIS_VERIFIER_PRIVATE_KEY`. The RPC and proof-builder URLs come from the selected Creditcoin/Attestcoin environment; the chain key must be confirmed through Creditcoin ChainInfo; the registry address comes from the Veyronis deployment; and the private key belongs to the address configured as the registry's immutable authorized verifier. `SEPOLIA_RPC_URL` is optional for future monitoring and is not trusted or required by the verification path. Unit tests use fakes and require none of these values.
 
-No live endpoint test runs under `npm test`. Live operation additionally requires a funded verifier account for the registry transaction and an already attested source transaction. The current agreement has no source-block deadline or maximum proof age, so the adapter cannot cryptographically distinguish stale but otherwise valid evidence. Freshness must be added as an explicit agreement/dispute rule before it can be enforced without inventing policy.
+No live endpoint test runs under `npm test`. Live operation additionally requires a funded verifier account for the registry transaction and an already attested source transaction.
+
+## Phase 5 agreement-scoped evidence policy
+
+Each escrow stores an immutable `evidencePolicyCommitment` alongside its agreement commitment. The complete policy remains off-chain for efficient interpretation, but the verifier must reproduce the exact commitment and the registry independently requires it to equal the value stored by the escrow. A backend cannot silently replace recipients, assets, amounts, or freshness bounds after deployment.
+
+The version 1 commitment is:
+
+```text
+keccak256(abi.encode(
+  uint8 version,
+  bytes32 evidenceType,
+  uint64 sourceChainKey,
+  uint8 assetKind,
+  address expectedSourceContract,
+  address expectedRecipient,
+  address expectedAsset,
+  address expectedSender,
+  uint8 amountRule,
+  uint256 amount,
+  uint64 minSourceBlock,
+  uint64 maxSourceBlock,
+  bytes4 calldataSelector,
+  bool requireTransferEvent
+))
+```
+
+`assetKind` is `0` for native and `1` for ERC-20. `amountRule` is `0` for exact and `1` for minimum. Zero minimum or maximum block values mean an open bound. A zero source contract disables the extra target constraint. Native policies require a zero asset, no transfer event, and use transaction `value`. ERC-20 policies require a nonzero token/source contract, zero native value, and a verified `Transfer(address,address,uint256)` event.
+
+### Verified transaction interpretation
+
+The SDK's `txBytes` is decoded as its ABI-encoded EVM transaction-plus-receipt Merkle leaf. Veyronis reconstructs the signed type 0, 1, or 2 transaction locally, recovers its sender and hash, and exposes the verified target, value, calldata, receipt status, and receipt logs. The proof's authenticated header number becomes `sourceBlockNumber`; unverified RPC receipt or block fields are not mixed into policy evaluation.
+
+Native payment evaluation checks the committed sender, transaction recipient, optional target, amount rule, success status, chain, and block window. ERC-20 evaluation does not use native `value` as token payment evidence. It requires a matching log emitted by the committed token contract with the exact `Transfer` topic, three topics, ABI-decodable amount, committed sender, and committed recipient.
+
+Version 1 calldata support is intentionally narrow. The zero selector disables calldata requirements. The only supported nonzero selector is ERC-20 `transfer(address,uint256)` (`0xa9059cbb`), decoded with a known ABI and checked semantically. Unknown selectors and malformed encodings fail closed. Arbitrary execution and raw string-only calldata matching are not used.
+
+### Freshness and trust boundaries
+
+The inclusive `[minSourceBlock, maxSourceBlock]` window is part of the immutable policy. Evidence outside it is rejected using the verified Attestcoin header height. A zero maximum is open-ended. Source timestamps are not accepted from callers or ordinary RPC responses; policies needing wall-clock deadlines require a future proof format that authenticates source block timestamps.
+
+- **Cryptographic fact:** Creditcoin's BlockProver accepts inclusion of the reconstructed transaction/receipt leaf at the verified source height.
+- **Semantic match:** the verifier evaluates chain, sender, target, recipient, asset, amount, calldata, logs, receipt success, and block window against the committed policy.
+- **Arbitrator decision:** the accepted claim remains advisory. Only `VeyronisEscrow.resolveDispute` can choose the financial outcome.
+
+Policy substitution is blocked by the escrow and registry commitment checks. Wrong contracts and event spoofing are blocked by target and log-origin checks. Native/ERC-20 confusion is blocked by distinct amount sources and the ERC-20 zero-native-value rule. Malformed logs and calldata fail closed. Existing claim and source-evidence keys continue to provide exact replay and cross-escrow duplicate protection. A compromised verifier key cannot alter the immutable policy, bypass registry checks, or settle funds, but verifier key rotation remains a future deployment and governance concern because authorization is immutable.
 
 ## Escrow and disputes
 

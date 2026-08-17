@@ -7,6 +7,7 @@ contract EvidenceClaimRegistry {
     struct Claim {
         address escrow;
         bytes32 agreementCommitment;
+        bytes32 evidencePolicyCommitment;
         bytes32 evidenceCommitment;
         bytes32 evidenceType;
         uint64 sourceChainKey;
@@ -19,6 +20,7 @@ contract EvidenceClaimRegistry {
     error MalformedClaim();
     error InvalidEscrow();
     error WrongAgreement();
+    error WrongEvidencePolicy();
     error WrongEvidenceCommitment();
     error WrongSubject();
     error EscrowNotDisputed(uint8 actualState);
@@ -50,6 +52,9 @@ contract EvidenceClaimRegistry {
         IVeyronisEvidenceEscrow escrow = IVeyronisEvidenceEscrow(claim.escrow);
         if (claim.escrow.code.length == 0) revert InvalidEscrow();
         if (escrow.agreementCommitment() != claim.agreementCommitment) revert WrongAgreement();
+        if (escrow.evidencePolicyCommitment() != claim.evidencePolicyCommitment) {
+            revert WrongEvidencePolicy();
+        }
         if (escrow.activeEvidenceCommitment() != claim.evidenceCommitment) {
             revert WrongEvidenceCommitment();
         }
@@ -61,7 +66,11 @@ contract EvidenceClaimRegistry {
         if (escrowState != DISPUTED_STATE) revert EscrowNotDisputed(escrowState);
 
         bytes32 expectedEvidenceCommitment = computeEvidenceCommitment(
-            claim.evidenceType, claim.sourceChainKey, claim.sourceTransactionHash, claim.subject
+            claim.evidencePolicyCommitment,
+            claim.evidenceType,
+            claim.sourceChainKey,
+            claim.sourceTransactionHash,
+            claim.subject
         );
         if (expectedEvidenceCommitment != claim.evidenceCommitment) {
             revert WrongEvidenceCommitment();
@@ -86,12 +95,21 @@ contract EvidenceClaimRegistry {
     }
 
     function computeEvidenceCommitment(
+        bytes32 evidencePolicyCommitment,
         bytes32 evidenceType,
         uint64 sourceChainKey,
         bytes32 sourceTransactionHash,
         address subject
     ) public pure returns (bytes32) {
-        return keccak256(abi.encode(evidenceType, sourceChainKey, sourceTransactionHash, subject));
+        return keccak256(
+            abi.encode(
+                evidencePolicyCommitment,
+                evidenceType,
+                sourceChainKey,
+                sourceTransactionHash,
+                subject
+            )
+        );
     }
 
     function computeClaimId(Claim calldata claim) public pure returns (bytes32) {
@@ -99,6 +117,7 @@ contract EvidenceClaimRegistry {
             abi.encode(
                 claim.escrow,
                 claim.agreementCommitment,
+                claim.evidencePolicyCommitment,
                 claim.evidenceCommitment,
                 claim.evidenceType,
                 claim.sourceChainKey,
@@ -119,6 +138,7 @@ contract EvidenceClaimRegistry {
     function _validateNonzeroFields(Claim calldata claim) private pure {
         if (
             claim.escrow == address(0) || claim.agreementCommitment == bytes32(0)
+                || claim.evidencePolicyCommitment == bytes32(0)
                 || claim.evidenceCommitment == bytes32(0) || claim.evidenceType == bytes32(0)
                 || claim.sourceChainKey == 0 || claim.sourceTransactionHash == bytes32(0)
                 || claim.subject == address(0)

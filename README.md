@@ -4,7 +4,7 @@ Cross-chain escrow and dispute resolution using Attestcoin-verified evidence on 
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the initial design and prototype scope.
 
-Phase 4 provides a deterministic, testable Attestcoin adapter that verifies source transaction inclusion through Creditcoin's SDK-defined precompile, semantically matches the result to an active escrow dispute, and submits advisory evidence to `EvidenceClaimRegistry`. Live use requires the environment variables documented in `.env.example`; local tests use no credentials or network access.
+Phase 5 binds each escrow to an immutable evidence-policy commitment. The Attestcoin adapter verifies source transaction inclusion, evaluates native or ERC-20 payment facts against that policy, enforces a verified source-block window, and submits advisory evidence to `EvidenceClaimRegistry`. Live use requires the environment variables documented in `.env.example`; local tests use no credentials or network access.
 
 ## Workspace commands
 
