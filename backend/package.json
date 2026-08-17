@@ -1,0 +1,14 @@
+{
+  "name": "@veyronis/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit", "test": "vitest run --passWithNoTests" },
+  "dependencies": {
+    "@gluwa/usc-sdk": "0.18.0",
+    "@veyronis/shared": "0.1.0",
+    "dotenv": "^17.2.3",
+    "ethers": "^6.15.0",
+    "zod": "^4.0.17"
+  }
+}
