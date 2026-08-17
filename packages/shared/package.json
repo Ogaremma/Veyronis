@@ -4,6 +4,12 @@
   "private": true,
   "type": "module",
   "exports": "./src/index.ts",
-  "scripts": { "typecheck": "tsc -p tsconfig.json --noEmit", "test": "vitest run --passWithNoTests" },
-  "dependencies": { "zod": "^4.0.17" }
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "ethers": "^6.15.0",
+    "zod": "^4.0.17"
+  }
 }

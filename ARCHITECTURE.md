@@ -173,6 +173,26 @@ The inclusive `[minSourceBlock, maxSourceBlock]` window is part of the immutable
 
 Policy substitution is blocked by the escrow and registry commitment checks. Wrong contracts and event spoofing are blocked by target and log-origin checks. Native/ERC-20 confusion is blocked by distinct amount sources and the ERC-20 zero-native-value rule. Malformed logs and calldata fail closed. Existing claim and source-evidence keys continue to provide exact replay and cross-escrow duplicate protection. A compromised verifier key cannot alter the immutable policy, bypass registry checks, or settle funds, but verifier key rotation remains a future deployment and governance concern because authorization is immutable.
 
+## Phase 6 agreement creation and deployment
+
+Phase 6 introduces an application workflow without moving contract authority into the application:
+
+```text
+Agreement draft -> shared validation -> canonical policy commitment
+  -> canonical agreement commitment -> participant review
+  -> backend deployment orchestration -> confirmed escrow metadata
+```
+
+The shared package owns the version 1 `EvidencePolicy` schema and the Solidity-compatible ABI commitment function. The agreement commitment is `keccak256(abi.encode(buyer, seller, arbitrator, requiredAmount, evidencePolicyCommitment, agreementNonce, evidenceRegistry))`. The nonce provides agreement-instance domain separation. Both commitments are shown before confirmation and are constructor parameters of the deployed escrow; they cannot be modified afterwards.
+
+The frontend is a blue, two-step creation surface. It accepts public wallet addresses and agreement fields, derives commitment previews locally, and sends only a validated draft to the backend API boundary after the user selects deployment. It never requests, stores, or transmits a private key, seed phrase, verifier credential, or deployment credential. Its review screen explicitly states that evidence remains advisory and commitments are immutable.
+
+The backend's `AgreementCreationService` persists `AWAITING_CONFIRMATION`, transitions through `DEPLOYING`, and reports `DEPLOYED` only after an ethers deployment transaction has a successful receipt. It records a sanitized `FAILED` state without fabricating a contract address if confirmation fails. The `EthersEscrowDeployer` receives a dedicated deployer signer, ABI, and bytecode through dependency injection. `DEPLOYER_PRIVATE_KEY` is loaded separately from `VEYRONIS_VERIFIER_PRIVATE_KEY`; the verifier key is never a deployment fallback.
+
+PostgreSQL stores workflow metadata only: commitments, policy JSON, participants, required amount, deployment transaction/block/address, timestamps, and the application deployment state. It does not store balances, deposited amounts, withdrawals, on-chain escrow state, refunds, disputes, or arbitrator outcomes. The `AgreementRepository` uses parameterized queries, while the in-memory implementation supports deterministic tests with no database. The schema migration is `backend/sql/001_create_agreements.sql`; operating it and wiring a PostgreSQL pool are explicit deployment tasks, not test prerequisites.
+
+The application deployment status is deliberately separate from `VeyronisEscrow.State`. Contract reads and events remain the only authority for financial and settlement state. A backend failure, duplicate metadata attempt, or stale UI cannot create a confirmed escrow record without a successful receipt.
+
 ## Escrow and disputes
 
 The prototype uses one escrow instance per agreement. The buyer funds it on Creditcoin. Before funding the buyer may cancel. Once funded, the buyer can confirm delivery, or either party can open a dispute with an evidence commitment. The arbitrator resolves an open dispute to exactly one recipient. A seller-approved refund pays the buyer. Settlement uses pull-style accounting: state and owed balance are updated before the recipient withdraws.

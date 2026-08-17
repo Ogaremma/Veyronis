@@ -1,11 +1,10 @@
 import type {
   AttestcoinProofRequest,
   AttestcoinVerificationResult,
-  EvidencePolicy,
   VerificationFailureCode,
   VerifiedEvidenceClaim,
 } from "@veyronis/shared";
-import { evidencePolicySchema } from "@veyronis/shared";
+import { computeEvidencePolicyCommitment, evidencePolicySchema } from "@veyronis/shared";
 import { AbiCoder, ZeroAddress, getAddress, keccak256 } from "ethers";
 import type {
   CryptographicProofVerifier,
@@ -186,44 +185,7 @@ export function computeSourceEvidenceKey(claim: VerifiedEvidenceClaim): string {
   );
 }
 
-export function computeEvidencePolicyCommitment(policy: EvidencePolicy): string {
-  return keccak256(
-    coder.encode(
-      [
-        "uint8",
-        "bytes32",
-        "uint64",
-        "uint8",
-        "address",
-        "address",
-        "address",
-        "address",
-        "uint8",
-        "uint256",
-        "uint64",
-        "uint64",
-        "bytes4",
-        "bool",
-      ],
-      [
-        policy.version,
-        policy.evidenceType,
-        policy.sourceChainKey,
-        policy.assetKind === "native" ? 0 : 1,
-        policy.expectedSourceContract,
-        policy.expectedRecipient,
-        policy.expectedAsset,
-        policy.expectedSender,
-        policy.amountRule === "exact" ? 0 : 1,
-        policy.amount,
-        policy.minSourceBlock,
-        policy.maxSourceBlock,
-        policy.calldataSelector,
-        policy.requireTransferEvent,
-      ],
-    ),
-  );
-}
+export { computeEvidencePolicyCommitment } from "@veyronis/shared";
 
 function sameHex(left: string, right: string): boolean {
   return left.toLowerCase() === right.toLowerCase();

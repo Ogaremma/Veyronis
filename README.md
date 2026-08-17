@@ -15,3 +15,11 @@ npm test
 forge build
 forge test -vvv
 ```
+
+## Agreement creation
+
+Apply `backend/sql/001_create_agreements.sql` to the selected PostgreSQL database, run `npm run build`, then start the agreement backend with `npm run start --workspace @veyronis/backend`. Run the agreement-creation UI with `npm run dev --workspace @veyronis/frontend`. The UI builds a shared, canonical evidence policy and shows the policy and agreement commitments before review. Deployment is routed to the backend boundary and requires a separately configured deployer; the frontend never receives a private key.
+
+The backend deployment service uses `DEPLOYER_RPC_URL` and `DEPLOYER_PRIVATE_KEY`. Attestcoin verification separately uses `CREDITCOIN_RPC_URL`, `ATTESTCOIN_PROOF_BUILDER_URL`, `SEPOLIA_CHAIN_KEY`, `VEYRONIS_EVIDENCE_REGISTRY_ADDRESS`, and `VEYRONIS_VERIFIER_PRIVATE_KEY`. `DATABASE_URL` is needed only when wiring the provided PostgreSQL metadata repository. `.env.example` contains names only. No real credentials, endpoints, or private keys are committed.
+
+PostgreSQL stores agreement metadata and deployment workflow state only. Creditcoin contracts remain authoritative for custody, deposits, dispute state, evidence acceptance, settlements, and withdrawals.

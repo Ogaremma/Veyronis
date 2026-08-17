@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AbiCoder, keccak256 } from "ethers";
 
 export const evidenceReferenceSchema = z.object({
   escrowAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
@@ -20,7 +21,9 @@ export const attestcoinProofRequestSchema = evidenceReferenceSchema.extend({
   policy: z.lazy(() => evidencePolicySchema),
 });
 
-export type AttestcoinProofRequest = z.infer<typeof attestcoinProofRequestSchema>;
+export type AttestcoinProofRequest = z.infer<
+  typeof attestcoinProofRequestSchema
+>;
 
 const uintStringSchema = z.string().regex(/^(0|[1-9][0-9]*)$/);
 const uint64StringSchema = uintStringSchema.refine(
@@ -54,40 +57,198 @@ export const evidencePolicySchema = z
   })
   .superRefine((policy, context) => {
     if (policy.expectedRecipient.toLowerCase() === zeroAddress) {
-      context.addIssue({ code: "custom", message: "Expected recipient is required" });
+      context.addIssue({
+        code: "custom",
+        message: "Expected recipient is required",
+      });
     }
     if (policy.expectedSender.toLowerCase() === zeroAddress) {
-      context.addIssue({ code: "custom", message: "Expected sender is required" });
+      context.addIssue({
+        code: "custom",
+        message: "Expected sender is required",
+      });
     }
     if (BigInt(policy.amount) === 0n) {
-      context.addIssue({ code: "custom", message: "Payment amount must be positive" });
+      context.addIssue({
+        code: "custom",
+        message: "Payment amount must be positive",
+      });
     }
     if (
       BigInt(policy.maxSourceBlock) !== 0n &&
       BigInt(policy.minSourceBlock) > BigInt(policy.maxSourceBlock)
     ) {
-      context.addIssue({ code: "custom", message: "Invalid source block window" });
+      context.addIssue({
+        code: "custom",
+        message: "Invalid source block window",
+      });
     }
     if (policy.assetKind === "native") {
-      if (policy.expectedAsset.toLowerCase() !== zeroAddress || policy.requireTransferEvent) {
-        context.addIssue({ code: "custom", message: "Native policy cannot require a token event" });
+      if (
+        policy.expectedAsset.toLowerCase() !== zeroAddress ||
+        policy.requireTransferEvent
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Native policy cannot require a token event",
+        });
       }
     } else if (
       policy.expectedAsset.toLowerCase() === zeroAddress ||
       policy.expectedSourceContract.toLowerCase() === zeroAddress ||
       !policy.requireTransferEvent
     ) {
-      context.addIssue({ code: "custom", message: "ERC-20 policy requires token, target, and event" });
+      context.addIssue({
+        code: "custom",
+        message: "ERC-20 policy requires token, target, and event",
+      });
     }
     if (
       policy.calldataSelector.toLowerCase() !== zeroSelector &&
       policy.calldataSelector.toLowerCase() !== "0xa9059cbb"
     ) {
-      context.addIssue({ code: "custom", message: "Unsupported calldata selector" });
+      context.addIssue({
+        code: "custom",
+        message: "Unsupported calldata selector",
+      });
     }
   });
 
 export type EvidencePolicy = z.infer<typeof evidencePolicySchema>;
+
+export const deploymentStatusSchema = z.enum([
+  "DRAFT",
+  "AWAITING_CONFIRMATION",
+  "DEPLOYING",
+  "DEPLOYED",
+  "FAILED",
+]);
+export type DeploymentStatus = z.infer<typeof deploymentStatusSchema>;
+
+export const agreementDraftSchema = z.object({
+  buyer: addressSchema,
+  seller: addressSchema,
+  arbitrator: addressSchema,
+  requiredAmount: uint256StringSchema,
+  agreementNonce: bytes32Schema,
+  evidenceRegistry: addressSchema,
+  policy: evidencePolicySchema,
+});
+export type AgreementDraft = z.infer<typeof agreementDraftSchema>;
+
+export const agreementMetadataSchema = agreementDraftSchema.extend({
+  id: bytes32Schema,
+  escrowAddress: addressSchema.optional(),
+  agreementCommitment: bytes32Schema,
+  evidencePolicyCommitment: bytes32Schema,
+  deploymentTransactionHash: bytes32Schema.optional(),
+  deploymentBlockNumber: uint64StringSchema.optional(),
+  deploymentStatus: deploymentStatusSchema,
+  deploymentError: z.string().max(500).optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type AgreementMetadata = z.infer<typeof agreementMetadataSchema>;
+
+const commitmentCoder = AbiCoder.defaultAbiCoder();
+
+/** Canonical Phase 5 policy commitment. Field order and widths mirror Solidity exactly. */
+export function computeEvidencePolicyCommitment(
+  policy: EvidencePolicy,
+): string {
+  return keccak256(
+    commitmentCoder.encode(
+      [
+        "uint8",
+        "bytes32",
+        "uint64",
+        "uint8",
+        "address",
+        "address",
+        "address",
+        "address",
+        "uint8",
+        "uint256",
+        "uint64",
+        "uint64",
+        "bytes4",
+        "bool",
+      ],
+      [
+        policy.version,
+        policy.evidenceType,
+        policy.sourceChainKey,
+        policy.assetKind === "native" ? 0 : 1,
+        policy.expectedSourceContract,
+        policy.expectedRecipient,
+        policy.expectedAsset,
+        policy.expectedSender,
+        policy.amountRule === "exact" ? 0 : 1,
+        policy.amount,
+        policy.minSourceBlock,
+        policy.maxSourceBlock,
+        policy.calldataSelector,
+        policy.requireTransferEvent,
+      ],
+    ),
+  );
+}
+
+/** Canonical agreement commitment used by deployment and participant review. */
+export function computeAgreementCommitment(
+  draft: AgreementDraft,
+  policyCommitment = computeEvidencePolicyCommitment(draft.policy),
+): string {
+  return keccak256(
+    commitmentCoder.encode(
+      [
+        "address",
+        "address",
+        "address",
+        "uint256",
+        "bytes32",
+        "bytes32",
+        "address",
+      ],
+      [
+        draft.buyer,
+        draft.seller,
+        draft.arbitrator,
+        draft.requiredAmount,
+        policyCommitment,
+        draft.agreementNonce,
+        draft.evidenceRegistry,
+      ],
+    ),
+  );
+}
+
+export function validateAgreementDraft(input: unknown): AgreementDraft {
+  const parsed = agreementDraftSchema.safeParse(input);
+  if (!parsed.success) throw new Error("Invalid agreement draft");
+  if (
+    [
+      parsed.data.buyer,
+      parsed.data.seller,
+      parsed.data.arbitrator,
+      parsed.data.evidenceRegistry,
+    ].some((address) => address.toLowerCase() === zeroAddress)
+  ) {
+    throw new Error("Agreement addresses must be nonzero");
+  }
+  if (/^0x0{64}$/i.test(parsed.data.agreementNonce))
+    throw new Error("Agreement nonce must be nonzero");
+  if (
+    parsed.data.buyer.toLowerCase() === parsed.data.seller.toLowerCase() ||
+    parsed.data.buyer.toLowerCase() === parsed.data.arbitrator.toLowerCase() ||
+    parsed.data.seller.toLowerCase() === parsed.data.arbitrator.toLowerCase()
+  ) {
+    throw new Error("Agreement participants must be distinct");
+  }
+  if (BigInt(parsed.data.requiredAmount) === 0n)
+    throw new Error("Required amount must be positive");
+  return parsed.data;
+}
 
 export const verifiedEvidenceClaimSchema = z.object({
   escrow: addressSchema,
@@ -130,7 +291,9 @@ export const verificationFailureCodeSchema = z.enum([
   "CONFIGURATION_MISSING",
 ]);
 
-export type VerificationFailureCode = z.infer<typeof verificationFailureCodeSchema>;
+export type VerificationFailureCode = z.infer<
+  typeof verificationFailureCodeSchema
+>;
 
 export type AttestcoinVerificationResult =
   | {
