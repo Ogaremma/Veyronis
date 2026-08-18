@@ -191,6 +191,10 @@ The backend's `AgreementCreationService` persists `AWAITING_CONFIRMATION`, trans
 
 PostgreSQL stores workflow metadata only: commitments, policy JSON, participants, required amount, deployment transaction/block/address, timestamps, and the application deployment state. It does not store balances, deposited amounts, withdrawals, on-chain escrow state, refunds, disputes, or arbitrator outcomes. The `AgreementRepository` uses parameterized queries, while the in-memory implementation supports deterministic tests with no database. The schema migration is `backend/sql/001_create_agreements.sql`; operating it and wiring a PostgreSQL pool are explicit deployment tasks, not test prerequisites.
 
+## Phase 7: wallet-authenticated agreement dashboard
+
+The dashboard uses a one-time wallet-signature challenge and an HttpOnly signed session cookie. Authentication controls access to participant metadata; it does not authorize a contract operation. The dashboard contract-read layer reads escrow state, withdrawal credit, and emitted events directly from Creditcoin through an RPC provider. Event records are derived display metadata, not database facts. The browser submits any permitted participant action through the connected wallet, while the backend derives the available actions from the authenticated participant role and fresh contract state. `VerifiedEvidenceRecorded` is visibly advisory: it can support a dispute review but cannot settle an escrow without the escrow state-machine action authorized on-chain.
+
 The application deployment status is deliberately separate from `VeyronisEscrow.State`. Contract reads and events remain the only authority for financial and settlement state. A backend failure, duplicate metadata attempt, or stale UI cannot create a confirmed escrow record without a successful receipt.
 
 ## Escrow and disputes
@@ -235,3 +239,11 @@ Off-chain: descriptions, attachments, PII, search indexes, notifications, source
 - Shared: Zod for runtime-safe transport schemas.
 
 The official SDK exports `PrecompileChainInfoProvider`, `ProofBuilder`, `PrecompileBlockProver`, `RawProofBuilder`, and query builders. Endpoints remain environment-configurable because protocol infrastructure URLs can change.
+
+## Phase 8 transaction execution and reconciliation
+
+Participant lifecycle transactions are prepared and signed only in the connected browser wallet. A transaction hash is not success: the frontend waits for a successful receipt, then requests a fresh backend reconciliation before reporting completion. Wallet rejection, on-chain revert, RPC failure, and reconciliation failure remain distinct UI states.
+
+The agreement reconciliation service reads escrow roles, immutable commitments, required amount, custody state, participant withdrawal credit, and contract events directly from the chain. PostgreSQL agreement values are compared as metadata caches only. A mismatch is returned as `METADATA_STALE`; it does not replace the chain value or silently rewrite historical metadata.
+
+Escrow events and `EvidenceClaimRegistry.VerifiedClaimAccepted` are indexed from the deployment block. Event timestamps are shown only when obtained from the authenticated block header. Verified evidence remains advisory and cannot invoke settlement.

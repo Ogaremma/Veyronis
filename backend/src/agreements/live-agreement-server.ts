@@ -9,6 +9,9 @@ import { AgreementCreationService } from "./agreement-service.js";
 import { createAgreementHttpHandler } from "./agreement-http.js";
 import { SqlAgreementRepository } from "./agreement-repository.js";
 import { EthersEscrowDeployer } from "./escrow-deployer.js";
+import { WalletAuthService } from "../auth/wallet-auth.js";
+import { EthersAgreementContractReader } from "./contract-read-layer.js";
+import { AgreementDashboardService } from "./dashboard-service.js";
 
 const config = loadAgreementServerConfig();
 const artifactPath = resolve(
@@ -30,7 +33,9 @@ const service = new AgreementCreationService(
   new SqlAgreementRepository(database),
   deployer,
 );
-const server = createServer(createAgreementHttpHandler(service));
+const auth = new WalletAuthService(config.SESSION_SECRET);
+const dashboard = new AgreementDashboardService(new SqlAgreementRepository(database), new EthersAgreementContractReader(provider));
+const server = createServer(createAgreementHttpHandler(service, { auth, dashboard }));
 server.listen(config.BACKEND_PORT, config.BACKEND_HOST, () => {
   console.log(
     `Veyronis agreement backend listening on http://${config.BACKEND_HOST}:${config.BACKEND_PORT}`,

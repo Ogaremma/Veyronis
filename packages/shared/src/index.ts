@@ -150,6 +150,102 @@ export const agreementMetadataSchema = agreementDraftSchema.extend({
 });
 export type AgreementMetadata = z.infer<typeof agreementMetadataSchema>;
 
+export const escrowStateSchema = z.enum([
+  "AwaitingPayment",
+  "AwaitingDelivery",
+  "RefundRequested",
+  "Disputed",
+  "Complete",
+  "Refunded",
+  "Cancelled",
+]);
+export type EscrowState = z.infer<typeof escrowStateSchema>;
+
+export const participantRoleSchema = z.enum(["buyer", "seller", "arbitrator"]);
+export type ParticipantRole = z.infer<typeof participantRoleSchema>;
+
+export const agreementActionSchema = z.enum([
+  "deposit",
+  "cancel",
+  "confirmDelivery",
+  "requestRefund",
+  "approveRefund",
+  "openDispute",
+  "resolveRelease",
+  "resolveRefund",
+  "withdraw",
+]);
+export type AgreementAction = z.infer<typeof agreementActionSchema>;
+
+export interface AgreementTimelineEvent {
+  transactionHash: string;
+  blockNumber: string;
+  logIndex: number;
+  name: string;
+  actor?: string;
+  amount?: string;
+  evidenceCommitment?: string;
+  claimId?: string;
+  resolution?: "ReleaseToSeller" | "RefundBuyer";
+  advisory: boolean;
+  timestamp?: string;
+}
+
+export interface AgreementChainSnapshot {
+  escrowAddress: string;
+  buyer: string;
+  seller: string;
+  arbitrator: string;
+  requiredAmount: string;
+  agreementCommitment: string;
+  evidencePolicyCommitment: string;
+  state: EscrowState;
+  depositedAmount: string;
+  activeEvidenceCommitment: string;
+  verifiedClaimId: string;
+  withdrawalAmount: string;
+  blockNumber: string;
+}
+
+export type TransactionStatus =
+  | "IDLE"
+  | "AWAITING_WALLET_SIGNATURE"
+  | "TRANSACTION_SUBMITTED"
+  | "CONFIRMING"
+  | "CONFIRMED"
+  | "RECONCILING"
+  | "COMPLETE"
+  | "USER_REJECTED"
+  | "TRANSACTION_REVERTED"
+  | "RPC_ERROR"
+  | "RECONCILIATION_FAILED";
+
+export interface TransactionReceiptInfo {
+  hash?: string;
+  status: TransactionStatus;
+  blockNumber?: string;
+  confirmations?: number;
+  error?: string;
+  explorerUrl?: string;
+}
+
+export interface AgreementDashboardItem {
+  metadata: AgreementMetadata;
+  role: ParticipantRole;
+  chain?: AgreementChainSnapshot;
+}
+
+export interface AgreementDetails extends AgreementDashboardItem {
+  timeline: AgreementTimelineEvent[];
+  actions: AgreementAction[];
+  reconciliation?: {
+    status: "MATCHED" | "METADATA_STALE";
+    authoritativeSource: "BLOCKCHAIN";
+    mismatches: string[];
+    checkedAtBlock: string;
+  };
+}
+
 const commitmentCoder = AbiCoder.defaultAbiCoder();
 
 /** Canonical Phase 5 policy commitment. Field order and widths mirror Solidity exactly. */

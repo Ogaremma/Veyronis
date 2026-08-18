@@ -17,6 +17,13 @@ export interface AgreementRepository {
     },
   ): Promise<void>;
   listAgreementsForParticipant(address: string): Promise<AgreementMetadata[]>;
+  recordReconciliation(record: {
+    agreementId: string;
+    status: "MATCHED" | "METADATA_STALE";
+    authoritativeSource: "BLOCKCHAIN";
+    mismatches: string[];
+    checkedAtBlock: string;
+  }): Promise<void>;
 }
 
 export class InMemoryAgreementRepository implements AgreementRepository {
@@ -73,6 +80,8 @@ export class InMemoryAgreementRepository implements AgreementRepository {
       )
       .map((agreement) => structuredClone(agreement));
   }
+
+  async recordReconciliation(): Promise<void> {}
 }
 
 export interface ParameterizedQueryExecutor {
@@ -161,6 +170,15 @@ export class SqlAgreementRepository implements AgreementRepository {
       [address],
     );
     return result.rows.map(mapRow);
+  }
+
+  async recordReconciliation(record: Parameters<AgreementRepository["recordReconciliation"]>[0]): Promise<void> {
+    await this.database.query(
+      `INSERT INTO agreement_reconciliations
+       (agreement_id,status,authoritative_source,mismatches,checked_at_block,created_at)
+       VALUES ($1,$2,$3,$4::jsonb,$5,$6)`,
+      [record.agreementId, record.status, record.authoritativeSource, JSON.stringify(record.mismatches), record.checkedAtBlock, new Date().toISOString()],
+    );
   }
 }
 

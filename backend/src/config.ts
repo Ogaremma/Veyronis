@@ -55,6 +55,7 @@ const agreementServerSchema = deploymentSchema.extend({
   DATABASE_URL: z.string().min(1),
   BACKEND_HOST: z.string().default("127.0.0.1"),
   BACKEND_PORT: z.coerce.number().int().positive().max(65535).default(3001),
+  SESSION_SECRET: z.string().min(16).default("development-only-change-me"),
 });
 export type AgreementServerConfig = z.infer<typeof agreementServerSchema>;
 export const loadAgreementServerConfig = (
