@@ -25,6 +25,8 @@ export class WalletAuthService {
     const address = getAddress(addressInput);
     const nonce = randomBytes(16).toString("hex");
     const expiresAt = this.now() + 5 * 60_000;
+    this.pruneChallenges();
+    if (this.challenges.size >= 1000) this.challenges.delete(this.challenges.keys().next().value!);
     const message = [
       "Veyronis wallet authentication",
       "",
@@ -36,6 +38,11 @@ export class WalletAuthService {
     ].join("\n");
     this.challenges.set(address.toLowerCase(), { message, expiresAt });
     return { address, message, expiresAt: new Date(expiresAt).toISOString() };
+  }
+
+  private pruneChallenges(): void {
+    const now = this.now();
+    for (const [address, challenge] of this.challenges) if (challenge.expiresAt <= now) this.challenges.delete(address);
   }
 
   verify(addressInput: string, signature: string): string {
@@ -80,10 +87,10 @@ export class WalletAuthService {
   }
 }
 
-export const sessionCookie = (token: string) =>
-  `veyronis_session=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=28800`;
-export const expiredSessionCookie =
-  "veyronis_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0";
+export const sessionCookie = (token: string, appEnv = process.env.APP_ENV ?? "development") =>
+  `veyronis_session=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=28800${appEnv === "local" ? "" : "; Secure"}`;
+export const expiredSessionCookie = (appEnv = process.env.APP_ENV ?? "development") =>
+  `veyronis_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${appEnv === "local" ? "" : "; Secure"}`;
 export function readCookie(
   header: string | undefined,
   name: string,

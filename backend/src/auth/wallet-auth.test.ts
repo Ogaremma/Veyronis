@@ -1,6 +1,6 @@
 import { Wallet } from "ethers";
 import { describe, expect, it } from "vitest";
-import { WalletAuthService } from "./wallet-auth.js";
+import { sessionCookie, WalletAuthService } from "./wallet-auth.js";
 
 describe("WalletAuthService", () => {
   it("verifies a one-time wallet signature and issues an expiring session", async () => {
@@ -20,5 +20,20 @@ describe("WalletAuthService", () => {
     expect(challenge.message).toContain(
       "does not authorize a blockchain transaction",
     );
+  });
+});
+
+describe("sessionCookie", () => {
+  it("uses Secure outside local while preserving HttpOnly and SameSite", () => {
+    expect(sessionCookie("token", "production")).toContain("Secure");
+    expect(sessionCookie("token", "production")).toContain("HttpOnly");
+    expect(sessionCookie("token", "production")).toContain("SameSite=Lax");
+  });
+
+  it("remains HTTP-compatible locally", () => {
+    const cookie = sessionCookie("token", "local");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Lax");
+    expect(cookie).not.toContain("Secure");
   });
 });

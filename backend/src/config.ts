@@ -52,10 +52,11 @@ export const loadDeploymentConfig = (
 };
 
 const agreementServerSchema = deploymentSchema.extend({
+  APP_ENV: z.enum(["local", "development", "production"]).default("development"),
   DATABASE_URL: z.string().min(1),
   BACKEND_HOST: z.string().default("127.0.0.1"),
   BACKEND_PORT: z.coerce.number().int().positive().max(65535).default(3001),
-  SESSION_SECRET: z.string().min(16).default("development-only-change-me"),
+  SESSION_SECRET: z.string().min(16).optional(),
 });
 export type AgreementServerConfig = z.infer<typeof agreementServerSchema>;
 export const loadAgreementServerConfig = (
@@ -66,5 +67,15 @@ export const loadAgreementServerConfig = (
     throw new ConfigurationError(
       result.error.issues.map((issue) => issue.path.join(".")),
     );
-  return result.data;
+  const data = result.data;
+  if (
+    data.APP_ENV !== "local" &&
+    (!data.SESSION_SECRET ||
+      data.SESSION_SECRET === "development-only-change-me")
+  )
+    throw new ConfigurationError(["SESSION_SECRET"]);
+  return {
+    ...data,
+    SESSION_SECRET: data.SESSION_SECRET ?? "development-only-change-me",
+  };
 };

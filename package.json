@@ -2,17 +2,36 @@
   "name": "veyronis",
   "version": "0.1.0",
   "private": true,
-  "workspaces": ["backend", "frontend", "packages/*"],
+  "workspaces": [
+    "backend",
+    "frontend",
+    "packages/*"
+  ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "dev:chain": "powershell -ExecutionPolicy Bypass -File scripts/local/chain.ps1",
+    "dev:db": "docker compose -f local/docker-compose.yml up -d",
+    "dev:db:down": "docker compose -f local/docker-compose.yml down",
+    "dev:deploy": "powershell -ExecutionPolicy Bypass -File scripts/local/deploy.ps1",
+    "dev:env": "node scripts/local/write-env.mjs",
+    "dev:migrate": "node scripts/local/migrate.mjs",
+    "dev:accounts": "node scripts/local/accounts.mjs",
+    "dev:backend": "npm run build --workspace @veyronis/backend && node --env-file=.env.local backend/dist/agreements/live-agreement-server.js",
+    "dev:frontend": "node --env-file=.env.local node_modules/next/dist/bin/next dev frontend",
+    "dev:smoke": "node --env-file=.env.local scripts/local/smoke.mjs"
   },
   "devDependencies": {
     "prettier": "^3.6.2",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   },
-  "engines": { "node": ">=24" }
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "cast": "^1.1.0"
+  }
 }

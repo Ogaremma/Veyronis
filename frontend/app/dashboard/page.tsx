@@ -64,6 +64,11 @@ export default function Dashboard() {
       <header className="dashboard-top">
         <div>
           <span className="dash-eyebrow">VEYRONIS / CONTROL ROOM</span>
+          {process.env.NEXT_PUBLIC_LOCAL_DEVELOPMENT === "true" && (
+            <span className="local-indicator">
+              LOCAL DEVELOPMENT / {process.env.NEXT_PUBLIC_NETWORK_NAME ?? "Anvil"}
+            </span>
+          )}
           <h1>Agreement dashboard</h1>
         </div>
         <button className="dash-primary" onClick={() => void connect()}>

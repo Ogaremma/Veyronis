@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { getAddress } from "ethers";
 import type { AgreementCreationService } from "./agreement-service.js";
 import type { AgreementDashboardService } from "./dashboard-service.js";
 import {
@@ -10,8 +11,16 @@ import {
 
 export function createAgreementHttpHandler(
   service: AgreementCreationService,
-  options?: { dashboard?: AgreementDashboardService; auth?: WalletAuthService },
+  options?: {
+    dashboard?: AgreementDashboardService;
+    auth?: WalletAuthService;
+    appEnv?: string;
+    creationLimiter?: InMemoryRateLimiter;
+    confirmationLimiter?: InMemoryRateLimiter;
+  },
 ) {
+  const creationLimiter = options?.creationLimiter ?? new InMemoryRateLimiter();
+  const confirmationLimiter = options?.confirmationLimiter ?? new InMemoryRateLimiter();
   return async (
     request: IncomingMessage,
     response: ServerResponse,
@@ -41,7 +50,7 @@ export function createAgreementHttpHandler(
           response,
           200,
           { address: body.address },
-          { "set-cookie": sessionCookie(token) },
+          { "set-cookie": sessionCookie(token, options?.appEnv) },
         );
         return;
       }
@@ -50,7 +59,7 @@ export function createAgreementHttpHandler(
           response,
           200,
           { ok: true },
-          { "set-cookie": expiredSessionCookie },
+          { "set-cookie": expiredSessionCookie(options?.appEnv) },
         );
         return;
       }
@@ -86,7 +95,18 @@ export function createAgreementHttpHandler(
         }
       }
       if (request.method === "POST" && request.url === "/agreements") {
-        const prepared = await service.prepare(await readJson(request));
+        const session = authenticatedSession(request, options?.auth, response);
+        if (!session) return;
+        const body = (await readJson(request)) as { buyer?: unknown };
+        if (typeof body.buyer !== "string" || getAddress(body.buyer) !== getAddress(session.address)) {
+          sendJson(response, 403, { error: "Authenticated wallet is not the agreement buyer" });
+          return;
+        }
+        if (!creationLimiter.allow(session.address.toLowerCase())) {
+          sendJson(response, 429, { error: "Too many agreement creation requests" });
+          return;
+        }
+        const prepared = await service.prepare(body);
         sendJson(response, 201, prepared.agreement);
         return;
       }
@@ -95,6 +115,18 @@ export function createAgreementHttpHandler(
           ? request.url?.match(/^\/agreements\/(0x[a-fA-F0-9]{64})\/confirm$/)
           : undefined;
       if (confirmation?.[1]) {
+        const session = authenticatedSession(request, options?.auth, response);
+        if (!session) return;
+        const agreement = await service.getAgreement(confirmation[1]);
+        if (!agreement) throw new Error("Agreement metadata not found");
+        if (getAddress(agreement.buyer) !== getAddress(session.address)) {
+          sendJson(response, 403, { error: "Authenticated wallet is not the agreement buyer" });
+          return;
+        }
+        if (!confirmationLimiter.allow(session.address.toLowerCase())) {
+          sendJson(response, 429, { error: "Too many agreement confirmation requests" });
+          return;
+        }
         sendJson(
           response,
           200,
@@ -107,6 +139,53 @@ export function createAgreementHttpHandler(
       sendJson(response, 400, { error: "Agreement request rejected" });
     }
   };
+}
+
+function authenticatedSession(
+  request: IncomingMessage,
+  auth: WalletAuthService | undefined,
+  response: ServerResponse,
+) {
+  const session = auth?.readSession(readCookie(request.headers.cookie, "veyronis_session"));
+  if (!session) sendJson(response, 401, { error: "Wallet authentication required" });
+  return session;
+}
+
+export class InMemoryRateLimiter {
+  private readonly entries = new Map<string, { count: number; resetAt: number }>();
+
+  constructor(
+    private readonly limit = 20,
+    private readonly windowMs = 60_000,
+    private readonly maxKeys = 1000,
+    private readonly now = () => Date.now(),
+  ) {}
+
+  allow(key: string): boolean {
+    this.prune();
+    const current = this.entries.get(key);
+    if (!current) {
+      if (this.entries.size >= this.maxKeys) this.entries.delete(this.entries.keys().next().value!);
+      this.entries.set(key, { count: 1, resetAt: this.now() + this.windowMs });
+      return true;
+    }
+    if (current.count >= this.limit) return false;
+    current.count += 1;
+    return true;
+  }
+
+  get size(): number {
+    return this.entries.size;
+  }
+
+  clear(): void {
+    this.entries.clear();
+  }
+
+  private prune(): void {
+    const now = this.now();
+    for (const [key, entry] of this.entries) if (entry.resetAt <= now) this.entries.delete(key);
+  }
 }
 
 async function readJson(request: IncomingMessage): Promise<unknown> {

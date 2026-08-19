@@ -33,9 +33,9 @@ const service = new AgreementCreationService(
   new SqlAgreementRepository(database),
   deployer,
 );
-const auth = new WalletAuthService(config.SESSION_SECRET);
+const auth = new WalletAuthService(config.SESSION_SECRET!);
 const dashboard = new AgreementDashboardService(new SqlAgreementRepository(database), new EthersAgreementContractReader(provider));
-const server = createServer(createAgreementHttpHandler(service, { auth, dashboard }));
+const server = createServer(createAgreementHttpHandler(service, { auth, dashboard, appEnv: config.APP_ENV }));
 server.listen(config.BACKEND_PORT, config.BACKEND_HOST, () => {
   console.log(
     `Veyronis agreement backend listening on http://${config.BACKEND_HOST}:${config.BACKEND_PORT}`,

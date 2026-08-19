@@ -247,3 +247,9 @@ Participant lifecycle transactions are prepared and signed only in the connected
 The agreement reconciliation service reads escrow roles, immutable commitments, required amount, custody state, participant withdrawal credit, and contract events directly from the chain. PostgreSQL agreement values are compared as metadata caches only. A mismatch is returned as `METADATA_STALE`; it does not replace the chain value or silently rewrite historical metadata.
 
 Escrow events and `EvidenceClaimRegistry.VerifiedClaimAccepted` are indexed from the deployment block. Event timestamps are shown only when obtained from the authenticated block header. Verified evidence remains advisory and cannot invoke settlement.
+
+## Phase 9 local full-stack environment
+
+Local development uses deterministic Anvil (`127.0.0.1:8545`, chain ID `31337`) solely as an EVM execution environment. A Foundry local bootstrap deploys `EvidenceClaimRegistry` and writes an ignored address artifact; the existing backend `EthersEscrowDeployer` then deploys each agreement escrow and verifies its immutable metadata after receipt confirmation. PostgreSQL runs locally as metadata-only storage and records reconciliation observations separately.
+
+The local verifier is a deterministic Anvil account used by `LocalMockAttestcoinVerifier` smoke coverage. It directly invokes the registry to test the registry contract boundary and is never a substitute for the configured production Attestcoin verifier. The Sepolia -> Attestcoin -> Creditcoin CC3 -> precompile verification path remains independent.

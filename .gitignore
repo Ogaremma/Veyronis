@@ -10,6 +10,7 @@ coverage/
 contracts/cache/
 contracts/out/
 contracts/broadcast/
+/broadcast/
 contracts/lib/
 /cache/
 /out/
@@ -17,3 +18,5 @@ contracts/lib/
 .DS_Store
 Thumbs.db
 *.log
+*.err
+local/contracts.json

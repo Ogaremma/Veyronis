@@ -68,6 +68,10 @@ export class AgreementCreationService {
       throw new Error("Agreement metadata disappeared after deployment");
     return updated;
   }
+
+  async getAgreement(id: string): Promise<AgreementMetadata | undefined> {
+    return this.repository.getAgreementById(id);
+  }
 }
 
 function normalizeDraft(draft: AgreementDraft): AgreementDraft {

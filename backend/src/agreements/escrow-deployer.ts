@@ -49,6 +49,27 @@ export class EthersEscrowDeployer implements EscrowDeploymentGateway {
     const receipt = await transaction.wait();
     if (!receipt || receipt.status !== 1)
       throw new Error("Escrow deployment was not confirmed");
+    const [buyer, seller, arbitrator, agreement, policy, amount, registry] =
+      await Promise.all([
+        contract.getFunction("buyer")(),
+        contract.getFunction("seller")(),
+        contract.getFunction("arbitrator")(),
+        contract.getFunction("agreementCommitment")(),
+        contract.getFunction("evidencePolicyCommitment")(),
+        contract.getFunction("requiredAmount")(),
+        contract.getFunction("evidenceRegistry")(),
+      ]);
+    if (
+      getAddress(String(buyer)) !== getAddress(input.buyer) ||
+      getAddress(String(seller)) !== getAddress(input.seller) ||
+      getAddress(String(arbitrator)) !== getAddress(input.arbitrator) ||
+      String(agreement).toLowerCase() !== input.agreementCommitment.toLowerCase() ||
+      String(policy).toLowerCase() !== input.evidencePolicyCommitment.toLowerCase() ||
+      BigInt(amount) !== BigInt(input.requiredAmount) ||
+      getAddress(String(registry)) !== getAddress(input.evidenceRegistry)
+    ) {
+      throw new Error("Deployed escrow immutable metadata mismatch");
+    }
     return {
       escrowAddress: getAddress(await contract.getAddress()),
       transactionHash: transaction.hash,

@@ -253,3 +253,4 @@ code {
     padding: 0 16px;
   }
 }
+.local-indicator{display:inline-block;margin-left:10px;padding:4px 8px;border:1px solid #75aee5;border-radius:4px;color:#0c559e;background:#eaf4ff;font-size:10px;font-weight:800;letter-spacing:1px}
