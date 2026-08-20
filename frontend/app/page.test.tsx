@@ -5,16 +5,15 @@ import { ZeroAddress, id } from "ethers";
 import Home from "./page";
 import { AgreementReview } from "./agreement-review";
 
-describe("agreement creation page", () => {
-  it("renders policy inputs, commitment preview, and a pre-deployment review action", () => {
+describe("Veyronis frontend", () => {
+  it("starts with self-custodial wallet onboarding", () => {
     const html = renderToStaticMarkup(<Home />);
-    expect(html).toContain("Create Agreement");
-    expect(html).toContain("Expected source contract");
-    expect(html).toContain("Evidence policy commitment");
-    expect(html).toContain("Review Agreement");
+    expect(html).toContain("Trust between strangers, backed by verifiable evidence.");
+    expect(html).toContain("Create a new wallet");
+    expect(html).toContain("I already have a wallet");
     expect(html).not.toContain("Confirm &amp; Deploy");
     expect(html).not.toContain("private key");
-    expect(html).not.toContain("seed phrase");
+    expect(html).toContain("never receives your recovery phrase");
   });
 
   it("renders immutable commitments and deployment only on the confirmation step", () => {

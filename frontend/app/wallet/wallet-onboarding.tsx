@@ -1,7 +1,7 @@
 "use client";
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Wallet, type HDNodeWallet } from "ethers";
-import { walletFromPhrase } from "../page";
+import { walletFromPhrase } from "./wallet-utils";
 import { GlassButton, GlassCard, GlassInput } from "../ui/glass";
 
 type View = "welcome" | "phrase" | "verify" | "restore";

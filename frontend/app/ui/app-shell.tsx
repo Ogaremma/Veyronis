@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import React, { type ReactNode } from "react";
 
 export type AppSection = "wallet" | "escrow" | "marketplace" | "proofs" | "reputation" | "activity";
 const nav: { id: AppSection; label: string; icon: string }[] = [

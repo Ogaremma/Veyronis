@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
+import React, { type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
 
 export function GlassCard({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <section className={`glass-card ${className}`}>{children}</section>;

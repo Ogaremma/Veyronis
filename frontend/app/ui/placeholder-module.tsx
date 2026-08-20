@@ -1,3 +1,4 @@
+import React from "react";
 import { GlassCard, SectionHeader, StatusBadge } from "./glass";
 
 const content = {

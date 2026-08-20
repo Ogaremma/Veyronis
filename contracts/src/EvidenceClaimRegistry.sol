@@ -45,25 +45,33 @@ contract EvidenceClaimRegistry {
         authorizedVerifier = authorizedVerifier_;
     }
 
-    function submitVerifiedClaim(Claim calldata claim) external returns (bytes32 claimId) {
+    function submitVerifiedClaim(
+        Claim calldata claim
+    ) external returns (bytes32 claimId) {
         if (msg.sender != authorizedVerifier) revert UnauthorizedVerifier();
         _validateNonzeroFields(claim);
 
         IVeyronisEvidenceEscrow escrow = IVeyronisEvidenceEscrow(claim.escrow);
         if (claim.escrow.code.length == 0) revert InvalidEscrow();
-        if (escrow.agreementCommitment() != claim.agreementCommitment) revert WrongAgreement();
-        if (escrow.evidencePolicyCommitment() != claim.evidencePolicyCommitment) {
+        if (escrow.agreementCommitment() != claim.agreementCommitment)
+            revert WrongAgreement();
+        if (
+            escrow.evidencePolicyCommitment() != claim.evidencePolicyCommitment
+        ) {
             revert WrongEvidencePolicy();
         }
         if (escrow.activeEvidenceCommitment() != claim.evidenceCommitment) {
             revert WrongEvidenceCommitment();
         }
-        if (claim.subject != escrow.buyer() && claim.subject != escrow.seller()) {
+        if (
+            claim.subject != escrow.buyer() && claim.subject != escrow.seller()
+        ) {
             revert WrongSubject();
         }
 
         uint8 escrowState = escrow.state();
-        if (escrowState != DISPUTED_STATE) revert EscrowNotDisputed(escrowState);
+        if (escrowState != DISPUTED_STATE)
+            revert EscrowNotDisputed(escrowState);
 
         bytes32 expectedEvidenceCommitment = computeEvidenceCommitment(
             claim.evidencePolicyCommitment,
@@ -90,7 +98,10 @@ contract EvidenceClaimRegistry {
         escrow.recordVerifiedEvidence(claimId, claim.evidenceCommitment);
 
         emit VerifiedClaimAccepted(
-            claimId, claim.escrow, claim.evidenceCommitment, sourceEvidenceKey
+            claimId,
+            claim.escrow,
+            claim.evidenceCommitment,
+            sourceEvidenceKey
         );
     }
 
@@ -101,47 +112,60 @@ contract EvidenceClaimRegistry {
         bytes32 sourceTransactionHash,
         address subject
     ) public pure returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                evidencePolicyCommitment,
-                evidenceType,
-                sourceChainKey,
-                sourceTransactionHash,
-                subject
-            )
-        );
+        return
+            keccak256(
+                abi.encode(
+                    evidencePolicyCommitment,
+                    evidenceType,
+                    sourceChainKey,
+                    sourceTransactionHash,
+                    subject
+                )
+            );
     }
 
-    function computeClaimId(Claim calldata claim) public pure returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                claim.escrow,
-                claim.agreementCommitment,
-                claim.evidencePolicyCommitment,
-                claim.evidenceCommitment,
-                claim.evidenceType,
-                claim.sourceChainKey,
-                claim.sourceTransactionHash,
-                claim.subject
-            )
-        );
+    function computeClaimId(
+        Claim calldata claim
+    ) public pure returns (bytes32) {
+        return
+            keccak256(
+                abi.encode(
+                    claim.escrow,
+                    claim.agreementCommitment,
+                    claim.evidencePolicyCommitment,
+                    claim.evidenceCommitment,
+                    claim.evidenceType,
+                    claim.sourceChainKey,
+                    claim.sourceTransactionHash,
+                    claim.subject
+                )
+            );
     }
 
-    function computeSourceEvidenceKey(Claim calldata claim) public pure returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                claim.evidenceType, claim.sourceChainKey, claim.sourceTransactionHash, claim.subject
-            )
-        );
+    function computeSourceEvidenceKey(
+        Claim calldata claim
+    ) public pure returns (bytes32) {
+        return
+            keccak256(
+                abi.encode(
+                    claim.evidenceType,
+                    claim.sourceChainKey,
+                    claim.sourceTransactionHash,
+                    claim.subject
+                )
+            );
     }
 
     function _validateNonzeroFields(Claim calldata claim) private pure {
         if (
-            claim.escrow == address(0) || claim.agreementCommitment == bytes32(0)
-                || claim.evidencePolicyCommitment == bytes32(0)
-                || claim.evidenceCommitment == bytes32(0) || claim.evidenceType == bytes32(0)
-                || claim.sourceChainKey == 0 || claim.sourceTransactionHash == bytes32(0)
-                || claim.subject == address(0)
+            claim.escrow == address(0) ||
+            claim.agreementCommitment == bytes32(0) ||
+            claim.evidencePolicyCommitment == bytes32(0) ||
+            claim.evidenceCommitment == bytes32(0) ||
+            claim.evidenceType == bytes32(0) ||
+            claim.sourceChainKey == 0 ||
+            claim.sourceTransactionHash == bytes32(0) ||
+            claim.subject == address(0)
         ) revert MalformedClaim();
     }
 }

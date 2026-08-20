@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import React, { useState } from "react";
 import { GlassButton, GlassCard, GlassInput, SectionHeader, StatusBadge } from "../ui/glass";
 
 export function DashboardHome({ address, balance, sendOpen, setSendOpen, sendEth }: { address: string; balance: string; sendOpen: boolean; setSendOpen: (open: boolean) => void; sendEth: (recipient: string, amount: string) => Promise<string> }) {
