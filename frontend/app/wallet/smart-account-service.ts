@@ -1,5 +1,4 @@
-import { privateKeyToAccount } from "viem/accounts";
-import { createPublicClient, http, type Address, type Hex, type PublicClient, type Chain } from "viem";
+import { createPublicClient, http, type Address, type EIP1193Provider, type Hex, type PublicClient, type Chain } from "viem";
 import { anvil, sepolia } from "viem/chains";
 import { toSimpleSmartAccount } from "permissionless/accounts";
 import { createBundlerClient, entryPoint08Address, type UserOperation } from "viem/account-abstraction";
@@ -27,8 +26,7 @@ export function readAaConfig(env: Record<string, string | undefined> = process.e
 
 function chainFor(config: AaConfig): Chain { return config.network === "sepolia" ? sepolia : anvil; }
 
-export async function deriveSmartAccount(ownerPrivateKey: string, config: AaConfig, index = 0n) {
-  const owner = privateKeyToAccount(ownerPrivateKey as `0x${string}`);
+export async function deriveSmartAccount(owner: EIP1193Provider, config: AaConfig, index = 0n) {
   const client = createPublicClient({ chain: chainFor(config), transport: http(config.rpcUrl) });
   return toSimpleSmartAccount({ client, owner, entryPoint: { address: ENTRYPOINT_V08, version: "0.8" }, index });
 }
@@ -54,11 +52,10 @@ export async function submitAndWait(client: AaLifecycleClient, userOperation: Us
   return { userOperation, userOperationHash, transactionHash: result.receipt.transactionHash };
 }
 
-export function createAaService(ownerPrivateKey: string, config: AaConfig) {
+export function createAaService(owner: EIP1193Provider, config: AaConfig) {
   if (!config.bundlerUrl) throw new Error("Missing NEXT_PUBLIC_AA_BUNDLER_URL");
   const chain = chainFor(config);
   const publicClient = createPublicClient({ chain, transport: http(config.rpcUrl) });
-  const owner = privateKeyToAccount(ownerPrivateKey as `0x${string}`);
   const accountPromise = toSimpleSmartAccount({ client: publicClient, owner, entryPoint: { address: ENTRYPOINT_V08, version: "0.8" } });
   return { accountPromise, publicClient, bundlerClientPromise: accountPromise.then(account => createBundlerClient({ account, chain, transport: http(config.bundlerUrl!) })) };
 }

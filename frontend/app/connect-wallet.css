@@ -1,0 +1,9 @@
+.connect-actions { gap: 12px; }
+.connect-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.connect-heading p { margin-bottom: 0; }
+.connector-button { display: flex; align-items: center; justify-content: flex-start; gap: 12px; text-align: left; }
+.connector-icon { display: grid; place-items: center; flex: 0 0 30px; height: 30px; border: 1px solid rgba(126, 180, 255, .3); border-radius: 6px; background: rgba(3, 15, 35, .48); font-size: 12px; font-weight: 900; }
+.connector-divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 11px; text-transform: uppercase; }
+.connector-divider::before, .connector-divider::after { content: ""; height: 1px; flex: 1; background: var(--line); }
+.connector-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+@media (max-width: 640px) { .connect-heading { display: grid; } }
