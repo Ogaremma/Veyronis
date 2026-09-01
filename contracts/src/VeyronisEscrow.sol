@@ -42,7 +42,10 @@ contract VeyronisEscrow {
     event Cancelled();
     event WithdrawalCredited(address indexed recipient, uint256 amount);
     event Withdrawn(address indexed recipient, uint256 amount);
-    event VerifiedEvidenceRecorded(bytes32 indexed claimId, bytes32 indexed evidenceCommitment);
+    event VerifiedEvidenceRecorded(
+        bytes32 indexed claimId,
+        bytes32 indexed evidenceCommitment
+    );
 
     address public immutable buyer;
     address public immutable seller;
@@ -69,13 +72,20 @@ contract VeyronisEscrow {
         uint256 requiredAmount_,
         address evidenceRegistry_
     ) {
-        if (buyer_ == address(0) || seller_ == address(0) || arbitrator_ == address(0)) {
+        if (
+            buyer_ == address(0) ||
+            seller_ == address(0) ||
+            arbitrator_ == address(0)
+        ) {
             revert ZeroAddress();
         }
-        if (buyer_ == seller_ || buyer_ == arbitrator_ || seller_ == arbitrator_) {
+        if (
+            buyer_ == seller_ || buyer_ == arbitrator_ || seller_ == arbitrator_
+        ) {
             revert RolesMustBeDistinct();
         }
-        if (agreementCommitment_ == bytes32(0)) revert InvalidAgreementCommitment();
+        if (agreementCommitment_ == bytes32(0))
+            revert InvalidAgreementCommitment();
         if (evidencePolicyCommitment_ == bytes32(0)) {
             revert InvalidEvidencePolicyCommitment();
         }
@@ -108,8 +118,14 @@ contract VeyronisEscrow {
         locked = 1;
     }
 
-    function deposit() external payable only(buyer) inState(State.AwaitingPayment) {
-        if (msg.value != requiredAmount) revert InvalidDeposit(requiredAmount, msg.value);
+    function deposit()
+        external
+        payable
+        only(buyer)
+        inState(State.AwaitingPayment)
+    {
+        if (msg.value != requiredAmount)
+            revert InvalidDeposit(requiredAmount, msg.value);
 
         depositedAmount = msg.value;
         state = State.AwaitingDelivery;
@@ -121,25 +137,32 @@ contract VeyronisEscrow {
         emit Cancelled();
     }
 
-    function confirmDelivery() external only(buyer) inState(State.AwaitingDelivery) {
+    function confirmDelivery()
+        external
+        only(buyer)
+        inState(State.AwaitingDelivery)
+    {
         state = State.Complete;
         emit DeliveryConfirmed();
         _credit(seller);
     }
 
-    function requestRefund(bytes32 evidenceCommitment)
-        external
-        only(buyer)
-        inState(State.AwaitingDelivery)
-    {
-        if (evidenceCommitment == bytes32(0)) revert InvalidEvidenceCommitment();
+    function requestRefund(
+        bytes32 evidenceCommitment
+    ) external only(buyer) inState(State.AwaitingDelivery) {
+        if (evidenceCommitment == bytes32(0))
+            revert InvalidEvidenceCommitment();
 
         state = State.RefundRequested;
         activeEvidenceCommitment = evidenceCommitment;
         emit RefundRequested(evidenceCommitment);
     }
 
-    function approveRefund() external only(seller) inState(State.RefundRequested) {
+    function approveRefund()
+        external
+        only(seller)
+        inState(State.RefundRequested)
+    {
         state = State.Refunded;
         emit RefundApproved();
         _credit(buyer);
@@ -150,17 +173,18 @@ contract VeyronisEscrow {
         if (state != State.AwaitingDelivery && state != State.RefundRequested) {
             revert DisputeUnavailable(state);
         }
-        if (evidenceCommitment == bytes32(0)) revert InvalidEvidenceCommitment();
+        if (evidenceCommitment == bytes32(0))
+            revert InvalidEvidenceCommitment();
 
         state = State.Disputed;
         activeEvidenceCommitment = evidenceCommitment;
         emit DisputeOpened(evidenceCommitment);
     }
 
-    function recordVerifiedEvidence(bytes32 claimId, bytes32 evidenceCommitment)
-        external
-        inState(State.Disputed)
-    {
+    function recordVerifiedEvidence(
+        bytes32 claimId,
+        bytes32 evidenceCommitment
+    ) external inState(State.Disputed) {
         if (msg.sender != evidenceRegistry) revert Unauthorized();
         if (claimId == bytes32(0) || evidenceCommitment == bytes32(0)) {
             revert InvalidEvidenceCommitment();
@@ -174,11 +198,9 @@ contract VeyronisEscrow {
         emit VerifiedEvidenceRecorded(claimId, evidenceCommitment);
     }
 
-    function resolveDispute(Resolution resolution)
-        external
-        only(arbitrator)
-        inState(State.Disputed)
-    {
+    function resolveDispute(
+        Resolution resolution
+    ) external only(arbitrator) inState(State.Disputed) {
         address recipient;
         if (resolution == Resolution.RefundBuyer) {
             state = State.Refunded;
@@ -197,7 +219,7 @@ contract VeyronisEscrow {
         if (amount == 0) revert NothingToWithdraw();
 
         withdrawals[msg.sender] = 0;
-        (bool success,) = payable(msg.sender).call{value: amount}("");
+        (bool success, ) = payable(msg.sender).call{value: amount}("");
         if (!success) revert TransferFailed();
 
         emit Withdrawn(msg.sender, amount);
