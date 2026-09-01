@@ -5,6 +5,15 @@ import { GlassButton, GlassCard, StatusBadge } from "../ui/glass";
 
 export interface WalletConnectorOption { id: string; name: string; type: string; }
 
+const SOLANA_FIRST_WALLETS = ["phantom", "solflare", "backpack"];
+
+function walletPriority(connector: WalletConnectorOption): number {
+  const name = connector.name.toLowerCase();
+  if (name.includes("metamask")) return 0;
+  if (SOLANA_FIRST_WALLETS.some((solanaWallet) => name.includes(solanaWallet))) return 2;
+  return 1;
+}
+
 export function WalletOnboarding({ connectors, connect, walletConnectConfigured, busyConnector, error }: {
   connectors: WalletConnectorOption[];
   connect: (connectorId: string) => Promise<void>;
@@ -12,7 +21,10 @@ export function WalletOnboarding({ connectors, connect, walletConnectConfigured,
   busyConnector?: string;
   error?: string;
 }) {
-  const injected = connectors.filter((connector) => connector.type !== "walletConnect");
+  const injected = connectors
+    .filter((connector) => connector.type !== "walletConnect")
+    .slice()
+    .sort((a, b) => walletPriority(a) - walletPriority(b));
   const remote = connectors.find((connector) => connector.type === "walletConnect");
   return <main className="onboarding"><div className="ambient-grid" /><div className="onboarding-inner">
     <div className="welcome-copy"><span className="onboarding-mark">V</span><p className="eyebrow">SELF-CUSTODIAL TRUST</p><h1>VEYRONIS</h1><p>Trust between strangers, backed by verifiable evidence.</p></div>
