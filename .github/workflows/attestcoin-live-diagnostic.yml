@@ -1,0 +1,20 @@
+name: Attestcoin live diagnostic
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    env:
+      CREDITCOIN_RPC_URL: ${{ vars.CREDITCOIN_RPC_URL }}
+      CREDITCOIN_PROOF_BUILDER_URL: ${{ vars.CREDITCOIN_PROOF_BUILDER_URL }}
+      SOURCE_CHAIN_KEY: ${{ vars.SOURCE_CHAIN_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node --experimental-strip-types scripts/attestcoin-live-diagnostic.ts
