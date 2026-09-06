@@ -10,7 +10,7 @@ import { EscrowModule } from "./escrow/escrow-module";
 import { PlaceholderModule } from "./ui/placeholder-module";
 import { walletConnectConfigured } from "./web3-config";
 
-const API = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:3001";
+const API = process.env.NEXT_PUBLIC_BACKEND_URL as string;
 
 export default function Home() {
   const { address, connector, isConnected } = useAccount();

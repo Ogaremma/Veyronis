@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { JsonRpcProvider, Wallet, type InterfaceAbi } from "ethers";
 import { Pool } from "pg";
-import { loadAgreementServerConfig } from "../config.js";
+import { loadAgreementServerConfig, loadConfig } from "../config.js";
 import { AgreementCreationService } from "./agreement-service.js";
 import { createAgreementHttpHandler } from "./agreement-http.js";
 import { SqlAgreementRepository } from "./agreement-repository.js";
@@ -12,6 +12,7 @@ import { EthersEscrowDeployer } from "./escrow-deployer.js";
 import { WalletAuthService } from "../auth/wallet-auth.js";
 import { EthersAgreementContractReader } from "./contract-read-layer.js";
 import { AgreementDashboardService } from "./dashboard-service.js";
+import { createLiveAttestcoinVerifier } from "../attestcoin/live-verifier.js";
 
 const config = loadAgreementServerConfig();
 const artifactPath = resolve(
@@ -35,7 +36,15 @@ const service = new AgreementCreationService(
 );
 const auth = new WalletAuthService(config.SESSION_SECRET!);
 const dashboard = new AgreementDashboardService(new SqlAgreementRepository(database), new EthersAgreementContractReader(provider));
-const server = createServer(createAgreementHttpHandler(service, { auth, dashboard, appEnv: config.APP_ENV }));
+const attestcoinVerifier = (() => {
+  try { return createLiveAttestcoinVerifier(loadConfig()); } catch { return undefined; }
+})();
+const server = createServer(createAgreementHttpHandler(service, {
+  auth,
+  dashboard,
+  appEnv: config.APP_ENV,
+  ...(attestcoinVerifier ? { attestcoinVerifier } : {}),
+}));
 server.listen(config.BACKEND_PORT, config.BACKEND_HOST, () => {
   console.log(
     `Veyronis agreement backend listening on http://${config.BACKEND_HOST}:${config.BACKEND_PORT}`,

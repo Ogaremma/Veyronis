@@ -2,6 +2,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { getAddress } from "ethers";
 import type { AgreementCreationService } from "./agreement-service.js";
 import type { AgreementDashboardService } from "./dashboard-service.js";
+import type { AttestcoinVerifier } from "../attestcoin/attestcoin-verifier.js";
+import { computeEvidenceCommitment } from "../attestcoin/attestcoin-verifier.js";
+import { isHexString } from "ethers";
 import {
   WalletAuthService,
   expiredSessionCookie,
@@ -17,6 +20,7 @@ export function createAgreementHttpHandler(
     appEnv?: string;
     creationLimiter?: InMemoryRateLimiter;
     confirmationLimiter?: InMemoryRateLimiter;
+    attestcoinVerifier?: Pick<AttestcoinVerifier, "verifyAndSubmit">;
   },
 ) {
   const creationLimiter = options?.creationLimiter ?? new InMemoryRateLimiter();
@@ -108,6 +112,40 @@ export function createAgreementHttpHandler(
         }
         const prepared = await service.prepare(body);
         sendJson(response, 201, prepared.agreement);
+        return;
+      }
+      if (request.method === "POST" && request.url === "/evidence/verify") {
+        const session = authenticatedSession(request, options?.auth, response);
+        if (!session) return;
+        if (!options?.attestcoinVerifier) {
+          sendJson(response, 503, { ok: false, code: "VERIFIER_UNAVAILABLE", message: "Evidence verifier unavailable" });
+          return;
+        }
+        const body = (await readJson(request)) as { escrowAddress?: unknown; transactionHash?: unknown };
+        if (typeof body.escrowAddress !== "string" || typeof body.transactionHash !== "string" || !isHexString(body.transactionHash, 32)) {
+          sendJson(response, 400, { ok: false, code: "INVALID_REQUEST", message: "Valid escrowAddress and transactionHash are required" });
+          return;
+        }
+        let escrowAddress: string;
+        try { escrowAddress = getAddress(body.escrowAddress); } catch { sendJson(response, 400, { ok: false, code: "INVALID_REQUEST", message: "Invalid escrow address" }); return; }
+        const agreement = await service.getAgreementByEscrowAddress(escrowAddress);
+        if (!agreement || !agreement.escrowAddress) { sendJson(response, 404, { ok: false, code: "AGREEMENT_NOT_FOUND", message: "Agreement not found" }); return; }
+        const participant = [agreement.buyer, agreement.seller, agreement.arbitrator].some((a) => getAddress(a) === getAddress(session.address));
+        if (!participant) { sendJson(response, 403, { ok: false, code: "FORBIDDEN", message: "Wallet is not an agreement participant" }); return; }
+        const evidenceCommitment = computeEvidenceCommitment(agreement.evidencePolicyCommitment, agreement.policy.evidenceType, agreement.policy.sourceChainKey, body.transactionHash, agreement.policy.expectedSender);
+        const result = await options.attestcoinVerifier.verifyAndSubmit({
+          escrowAddress,
+          agreementCommitment: agreement.agreementCommitment,
+          evidencePolicyCommitment: agreement.evidencePolicyCommitment,
+          evidenceCommitment,
+          evidenceType: agreement.policy.evidenceType,
+          sourceChainKey: agreement.policy.sourceChainKey,
+          transactionHash: body.transactionHash,
+          subject: agreement.policy.expectedSender,
+          policy: agreement.policy,
+        });
+        if (!result.ok) { sendJson(response, 422, { ok: false, code: result.code, message: result.message }); return; }
+        sendJson(response, 200, { ok: true, claimId: result.claimId, registryTransactionHash: result.transactionHash, evidence: { sourceChainKey: result.claim.sourceChainKey, sourceTransactionHash: result.claim.sourceTransactionHash, subject: result.claim.subject, evidenceType: result.claim.evidenceType } });
         return;
       }
       const confirmation =

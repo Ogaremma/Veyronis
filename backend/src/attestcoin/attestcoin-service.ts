@@ -7,11 +7,12 @@ import type {
   ProofVerificationResult,
 } from "./verifier-types.js";
 import { decodeAttestedTransaction } from "./attested-transaction-decoder.js";
+import { SdkAttestcoinProofProvider, type AttestcoinProofProvider } from "./proof-provider.js";
 
 export class AttestcoinService implements CryptographicProofVerifier {
   readonly creditcoinProvider: JsonRpcProvider;
   readonly chainInfo: chainInfo.PrecompileChainInfoProvider;
-  readonly proofBuilder: proofProvider.service.ProofBuilder;
+  readonly proofBuilder: AttestcoinProofProvider;
   readonly blockProver: blockProver.PrecompileBlockProver;
 
   constructor(readonly config: AppConfig) {
@@ -22,9 +23,11 @@ export class AttestcoinService implements CryptographicProofVerifier {
       typeof chainInfo.PrecompileChainInfoProvider
     >[0];
     this.chainInfo = new chainInfo.PrecompileChainInfoProvider(sdkProvider);
-    this.proofBuilder = new proofProvider.service.ProofBuilder(
-      config.SEPOLIA_CHAIN_KEY,
-      config.ATTESTCOIN_PROOF_BUILDER_URL,
+    this.proofBuilder = new SdkAttestcoinProofProvider(
+      new proofProvider.service.ProofBuilder(
+        config.SEPOLIA_CHAIN_KEY,
+        config.ATTESTCOIN_PROOF_BUILDER_URL,
+      ),
     );
     this.blockProver = new blockProver.PrecompileBlockProver(sdkProvider);
   }

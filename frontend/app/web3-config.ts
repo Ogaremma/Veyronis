@@ -25,7 +25,7 @@ export const web3Config = createConfig({
   multiInjectedProviderDiscovery: true,
   ssr: true,
   transports: {
-    [anvil.id]: http(process.env.NEXT_PUBLIC_ANVIL_RPC_URL ?? "http://127.0.0.1:8545"),
+    [anvil.id]: http(process.env.NEXT_PUBLIC_ANVIL_RPC_URL),
     [sepolia.id]: http(process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL),
   },
 });

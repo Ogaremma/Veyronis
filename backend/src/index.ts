@@ -11,6 +11,7 @@ export {
   EthersEvidenceClaimRegistryGateway,
 } from "./attestcoin/ethers-gateways.js";
 export { SourceTransactionPolicyEvaluator } from "./attestcoin/source-transaction-interpreter.js";
+export { SdkAttestcoinProofProvider } from "./attestcoin/proof-provider.js";
 export {
   createLiveAttestcoinVerifier,
   SOURCE_PAYMENT_EVIDENCE_TYPE,
@@ -45,6 +46,7 @@ export type {
   EvidencePolicyEvaluator,
   VerifiedSourceTransaction,
 } from "./attestcoin/verifier-types.js";
+export type { AttestcoinProof, AttestcoinProofProvider, AttestcoinProofResult } from "./attestcoin/proof-provider.js";
 export type {
   ClaimSubmissionResult,
   EvidenceClaimOrchestrator,

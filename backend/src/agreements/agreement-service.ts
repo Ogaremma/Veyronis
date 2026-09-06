@@ -72,6 +72,10 @@ export class AgreementCreationService {
   async getAgreement(id: string): Promise<AgreementMetadata | undefined> {
     return this.repository.getAgreementById(id);
   }
+
+  async getAgreementByEscrowAddress(address: string): Promise<AgreementMetadata | undefined> {
+    return this.repository.getAgreementByEscrowAddress(address);
+  }
 }
 
 function normalizeDraft(draft: AgreementDraft): AgreementDraft {

@@ -7,7 +7,7 @@ import { AgreementDetailView } from "../agreement-detail-view";
 import { executeWalletTransaction } from "../../transaction-executor";
 import { explorerTransactionUrl } from "../../network-config";
 
-const API = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:3001";
+const API = process.env.NEXT_PUBLIC_BACKEND_URL as string;
 const actionAbi = [
   "function deposit() payable", "function cancel()", "function confirmDelivery()",
   "function requestRefund(bytes32)", "function approveRefund()", "function openDispute(bytes32)",

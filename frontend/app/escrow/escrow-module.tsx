@@ -5,8 +5,8 @@ import { computeAgreementCommitment, computeEvidencePolicyCommitment, validateAg
 import { HttpAgreementCreationClient } from "../agreement-client";
 import { GlassButton, GlassCard, GlassInput, SectionHeader, StatusBadge } from "../ui/glass";
 
-const API = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:3001";
-const REGISTRY = process.env.NEXT_PUBLIC_EVIDENCE_REGISTRY_ADDRESS ?? process.env.NEXT_PUBLIC_VEYRONIS_EVIDENCE_REGISTRY_ADDRESS ?? "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
+const API = process.env.NEXT_PUBLIC_BACKEND_URL as string;
+const REGISTRY = (process.env.NEXT_PUBLIC_EVIDENCE_REGISTRY_ADDRESS ?? process.env.NEXT_PUBLIC_VEYRONIS_EVIDENCE_REGISTRY_ADDRESS) as string;
 type AgreementItem = { metadata: { id: string; escrowAddress?: string; deploymentStatus: string; requiredAmount: string }; role: string; chain?: { state: string } };
 
 export function EscrowModule({ walletAddress }: { walletAddress: string }) {

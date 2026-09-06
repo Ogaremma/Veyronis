@@ -12,7 +12,7 @@ type Item = {
   role: string;
   chain?: { state: string };
 };
-const API = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:3001";
+const API = process.env.NEXT_PUBLIC_BACKEND_URL as string;
 declare global {
   interface Window {
     ethereum?: unknown;
