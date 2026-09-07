@@ -59,6 +59,7 @@ export interface EscrowDisputeContext {
 
 export interface EscrowContextReader {
   readDisputeContext(escrowAddress: string): Promise<EscrowDisputeContext>;
+  readVerifiedClaimId(escrowAddress: string): Promise<string>;
 }
 
 export interface RegistrySubmission {

@@ -15,8 +15,11 @@ export class AttestcoinService implements CryptographicProofVerifier {
   readonly proofBuilder: AttestcoinProofProvider;
   readonly blockProver: blockProver.PrecompileBlockProver;
 
-  constructor(readonly config: AppConfig) {
-    this.creditcoinProvider = new JsonRpcProvider(config.CREDITCOIN_RPC_URL);
+  constructor(
+    readonly config: AppConfig,
+    creditcoinProvider = new JsonRpcProvider(config.CREDITCOIN_RPC_URL),
+  ) {
+    this.creditcoinProvider = creditcoinProvider;
     // The SDK's generated declaration uses a private ethers provider identity.
     // At runtime this is the same deduplicated ethers v6 JsonRpcProvider instance.
     const sdkProvider = this.creditcoinProvider as unknown as ConstructorParameters<
@@ -38,6 +41,10 @@ export class AttestcoinService implements CryptographicProofVerifier {
     }
 
     try {
+      const network = await this.creditcoinProvider.getNetwork();
+      if (network.chainId !== 102031n) {
+        return failure("CONFIGURATION_MISSING", "The Creditcoin RPC is connected to another chain");
+      }
       const supported = await this.chainInfo.getSupportedChainByKey(reference.sourceChainKey);
       if (!supported) {
         return failure("UNSUPPORTED_SOURCE_CHAIN", "Creditcoin does not support the source chain key");

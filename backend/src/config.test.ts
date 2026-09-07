@@ -30,4 +30,26 @@ describe("loadAgreementServerConfig", () => {
   it("retains the development fallback for local operation", () => {
     expect(loadAgreementServerConfig({ ...serverEnvironment, APP_ENV: "local" }).SESSION_SECRET).toBe("development-only-change-me");
   });
+
+  it("requires an explicit frontend origin in production", () => {
+    expect(() =>
+      loadAgreementServerConfig({
+        ...serverEnvironment,
+        APP_ENV: "production",
+        SESSION_SECRET: "a sufficiently long production secret",
+      }),
+    ).toThrow(ConfigurationError);
+  });
+
+  it("uses a Render-compatible host and port in production", () => {
+    const config = loadAgreementServerConfig({
+      ...serverEnvironment,
+      APP_ENV: "production",
+      SESSION_SECRET: "a sufficiently long production secret",
+      FRONTEND_ORIGIN: "https://veyronis.example",
+      PORT: "10000",
+    });
+    expect(config.BACKEND_HOST).toBe("0.0.0.0");
+    expect(config.BACKEND_PORT).toBe(10000);
+  });
 });

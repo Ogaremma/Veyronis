@@ -122,6 +122,12 @@ export class AttestcoinVerifier {
         return failure("REPLAY_DETECTED", "The normalized evidence was already consumed or bound");
       }
       const submission = await this.registry.submitVerifiedClaim(claim);
+      const verifiedClaimId = await this.escrowReader.readVerifiedClaimId(
+        request.escrowAddress,
+      );
+      if (!sameHex(verifiedClaimId, submission.claimId)) {
+        return failure("REGISTRY_REJECTION", "The escrow did not record the accepted claim");
+      }
       return {
         ok: true,
         claim,

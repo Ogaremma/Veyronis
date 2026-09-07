@@ -1,0 +1,547 @@
+{
+  "abi": [
+    {
+      "type": "constructor",
+      "inputs": [
+        {
+          "name": "buyer_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "seller_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "arbitrator_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "agreementCommitment_",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "evidencePolicyCommitment_",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "requiredAmount_",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "evidenceRegistry_",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "activeEvidenceCommitment",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "agreementCommitment",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "approveRefund",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "arbitrator",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "buyer",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "cancel",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "confirmDelivery",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "deposit",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "payable"
+    },
+    {
+      "type": "function",
+      "name": "depositedAmount",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "evidencePolicyCommitment",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "evidenceRegistry",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "openDispute",
+      "inputs": [
+        {
+          "name": "evidenceCommitment",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "recordVerifiedEvidence",
+      "inputs": [
+        {
+          "name": "claimId",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "evidenceCommitment",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "requestRefund",
+      "inputs": [
+        {
+          "name": "evidenceCommitment",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "requiredAmount",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "resolveDispute",
+      "inputs": [
+        {
+          "name": "resolution",
+          "type": "uint8",
+          "internalType": "enum VeyronisEscrow.Resolution"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "seller",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "state",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint8",
+          "internalType": "enum VeyronisEscrow.State"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "totalAccountedFunds",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "verifiedClaimId",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "withdraw",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "withdrawals",
+      "inputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "event",
+      "name": "Cancelled",
+      "inputs": [],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "DeliveryConfirmed",
+      "inputs": [],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "Deposited",
+      "inputs": [
+        {
+          "name": "amount",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "DisputeOpened",
+      "inputs": [
+        {
+          "name": "evidenceCommitment",
+          "type": "bytes32",
+          "indexed": true,
+          "internalType": "bytes32"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "DisputeResolved",
+      "inputs": [
+        {
+          "name": "resolution",
+          "type": "uint8",
+          "indexed": false,
+          "internalType": "enum VeyronisEscrow.Resolution"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "RefundApproved",
+      "inputs": [],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "RefundRequested",
+      "inputs": [
+        {
+          "name": "evidenceCommitment",
+          "type": "bytes32",
+          "indexed": true,
+          "internalType": "bytes32"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "VerifiedEvidenceRecorded",
+      "inputs": [
+        {
+          "name": "claimId",
+          "type": "bytes32",
+          "indexed": true,
+          "internalType": "bytes32"
+        },
+        {
+          "name": "evidenceCommitment",
+          "type": "bytes32",
+          "indexed": true,
+          "internalType": "bytes32"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "WithdrawalCredited",
+      "inputs": [
+        {
+          "name": "recipient",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "amount",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "Withdrawn",
+      "inputs": [
+        {
+          "name": "recipient",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "amount",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "error",
+      "name": "DisputeUnavailable",
+      "inputs": [
+        {
+          "name": "actual",
+          "type": "uint8",
+          "internalType": "enum VeyronisEscrow.State"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EvidenceAlreadyVerified",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidAgreementCommitment",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidDeposit",
+      "inputs": [
+        {
+          "name": "expected",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "actual",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "InvalidEvidenceCommitment",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidEvidencePolicyCommitment",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidEvidenceRegistry",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidRequiredAmount",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidState",
+      "inputs": [
+        {
+          "name": "expected",
+          "type": "uint8",
+          "internalType": "enum VeyronisEscrow.State"
+        },
+        {
+          "name": "actual",
+          "type": "uint8",
+          "internalType": "enum VeyronisEscrow.State"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "NothingToWithdraw",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "Reentrancy",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RolesMustBeDistinct",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "TransferFailed",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "Unauthorized",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "ZeroAddress",
+      "inputs": []
+    }
+  ],
+  "bytecode": {
+    "object": "0x6101606040526001600555348015610015575f5ffd5b506040516112e43803806112e4833981016040819052610034916101bc565b6001600160a01b038716158061005157506001600160a01b038616155b8061006357506001600160a01b038516155b156100815760405163d92e233d60e01b815260040160405180910390fd5b856001600160a01b0316876001600160a01b031614806100b25750846001600160a01b0316876001600160a01b0316145b806100ce5750846001600160a01b0316866001600160a01b0316145b156100ec576040516346ef521b60e01b815260040160405180910390fd5b8361010a57604051630b4bf38d60e31b815260040160405180910390fd5b826101285760405163c7db722b60e01b815260040160405180910390fd5b815f0361014857604051637bee7a6760e01b815260040160405180910390fd5b6001600160a01b03811661016f57604051636257d44360e01b815260040160405180910390fd5b6001600160a01b0396871660805294861660a05292851660c05260e0919091526101005261012052166101405261022a565b80516001600160a01b03811681146101b7575f5ffd5b919050565b5f5f5f5f5f5f5f60e0888a0312156101d2575f5ffd5b6101db886101a1565b96506101e9602089016101a1565b95506101f7604089016101a1565b606089015160808a015160a08b01519297509095509350915061021c60c089016101a1565b905092959891949750929550565b60805160a05160c05160e051610100516101205161014051610ff26102f25f395f8181610360015261049301525f818161024a01528181610b8c0152610bc001525f61041c01525f61021701525f8181610291015261093501525f8181610146015281816105740152818161082901528181610a1901528181610a890152610d3a01525f81816102c401528181610634015281816107690152818161084f015281816109e601528181610abb01528181610b0301528181610c3d0152610d060152610ff25ff3fe608060405260043610610131575f3560e01c8063775274a1116100a8578063c19d93fb1161006d578063c19d93fb14610396578063d0e30db0146103bb578063d9796fc3146103c3578063ea8a1af0146103d8578063f08ef6cb146103ec578063f5b1d5f01461040b575f5ffd5b8063775274a1146102e65780637a9262a214610305578063881f227c1461033057806395272e6d1461034f5780639c65880f14610382575f5ffd5b80633ccfd60b116100f95780633ccfd60b146101f257806346aa53bd1461020657806348b9ef40146102395780635e10177b1461026c5780636cc6cde1146102805780637150d8ae146102b3575f5ffd5b806308551a53146101355780631d01364c1461018557806325e6996b146101a857806333f3dcff146101bd57806335a9731b146101de575b5f5ffd5b348015610140575f5ffd5b506101687f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b0390911681526020015b60405180910390f35b348015610190575f5ffd5b5061019a60015481565b60405190815260200161017c565b3480156101b3575f5ffd5b5061019a60035481565b3480156101c8575f5ffd5b506101dc6101d7366004610eaa565b61043e565b005b3480156101e9575f5ffd5b506101dc610572565b3480156101fd575f5ffd5b506101dc61065c565b348015610211575f5ffd5b5061019a7f000000000000000000000000000000000000000000000000000000000000000081565b348015610244575f5ffd5b5061019a7f000000000000000000000000000000000000000000000000000000000000000081565b348015610277575f5ffd5b506101dc610767565b34801561028b575f5ffd5b506101687f000000000000000000000000000000000000000000000000000000000000000081565b3480156102be575f5ffd5b506101687f000000000000000000000000000000000000000000000000000000000000000081565b3480156102f1575f5ffd5b506101dc610300366004610eca565b61084d565b348015610310575f5ffd5b5061019a61031f366004610ee1565b60046020525f908152604090205481565b34801561033b575f5ffd5b506101dc61034a366004610f0e565b610933565b34801561035a575f5ffd5b506101687f000000000000000000000000000000000000000000000000000000000000000081565b34801561038d575f5ffd5b5061019a610a7f565b3480156103a1575f5ffd5b505f546103ae9060ff1681565b60405161017c9190610f54565b6101dc610b01565b3480156103ce575f5ffd5b5061019a60025481565b3480156103e3575f5ffd5b506101dc610c3b565b3480156103f7575f5ffd5b506101dc610406366004610eca565b610cfb565b348015610416575f5ffd5b5061019a7f000000000000000000000000000000000000000000000000000000000000000081565b6003805f5460ff16600681111561045757610457610f2c565b14610488575f54604051633bf2e2f960e11b815261047f91839160ff90911690600401610f68565b60405180910390fd5b336001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016146104d0576040516282b42960e81b815260040160405180910390fd5b8215806104db575081155b156104f95760405163317ac7df60e21b815260040160405180910390fd5b600254821461051b5760405163317ac7df60e21b815260040160405180910390fd5b6003541561053c57604051630461ad4960e01b815260040160405180910390fd5b6003839055604051829084907f5e7fd80dbd1bdb64b78eaa286ed227fc8420202a98335b5acf83f2229e50031a905f90a3505050565b7f0000000000000000000000000000000000000000000000000000000000000000336001600160a01b038216146105bb576040516282b42960e81b815260040160405180910390fd5b6002805f5460ff1660068111156105d4576105d4610f2c565b146105fc575f54604051633bf2e2f960e11b815261047f91839160ff90911690600401610f68565b5f805460ff191660051781556040517f0a258a19aa7e706e6d1100f125c28e0ae5d75cc410e50bb02c06d246daf6515b9190a16106587f0000000000000000000000000000000000000000000000000000000000000000610e34565b5050565b60055460011461067f5760405163558a1e0360e11b815260040160405180910390fd5b6002600555335f90815260046020526040812054908190036106b457604051630686827b60e51b815260040160405180910390fd5b335f818152600460205260408082208290555190919083908381818185875af1925050503d805f8114610702576040519150601f19603f3d011682016040523d82523d5f602084013e610707565b606091505b5050905080610729576040516312171d8360e31b815260040160405180910390fd5b60405182815233907f7084f5476618d8e60b11ef0d7d3f06914655adb8793e28ff7f018d4c76d505d59060200160405180910390a250506001600555565b7f0000000000000000000000000000000000000000000000000000000000000000336001600160a01b038216146107b0576040516282b42960e81b815260040160405180910390fd5b6001805f5460ff1660068111156107c9576107c9610f2c565b146107f1575f54604051633bf2e2f960e11b815261047f91839160ff90911690600401610f68565b5f805460ff191660041781556040517f4cfed5a6b337f78f2df5b8499b67efc08ce0d2cbed5d1be5c62bb6e0295e87859190a16106587f0000000000000000000000000000000000000000000000000000000000000000610e34565b7f0000000000000000000000000000000000000000000000000000000000000000336001600160a01b03821614610896576040516282b42960e81b815260040160405180910390fd5b6001805f5460ff1660068111156108af576108af610f2c565b146108d7575f54604051633bf2e2f960e11b815261047f91839160ff90911690600401610f68565b826108f55760405163317ac7df60e21b815260040160405180910390fd5b5f805460ff19166002908117825584905560405184917fc6bd23896495231c0b35505cd56d6ce75442a8757312378285344a2409ff977a91a2505050565b7f0000000000000000000000000000000000000000000000000000000000000000336001600160a01b0382161461097c576040516282b42960e81b815260040160405180910390fd5b6003805f5460ff16600681111561099557610995610f2c565b146109bd575f54604051633bf2e2f960e11b815261047f91839160ff90911690600401610f68565b5f60018460018111156109d2576109d2610f2c565b03610a0a57505f805460ff191660051790557f0000000000000000000000000000000000000000000000000000000000000000610a39565b505f805460ff191660041790557f00000000000000000000000000000000000000000000000000000000000000005b7f1d815b948ecb3f2c196e1482e5c3dcaf77806c7ae3b48a063d8185f9a253c1bf84604051610a689190610f83565b60405180910390a1610a7981610e34565b50505050565b6001600160a01b037f000000000000000000000000000000000000000000000000000000000000000081165f90815260046020526040808220547f00000000000000000000000000000000000000000000000000000000000000009093168252812054600154919291610af29190610f9d565b610afc9190610f9d565b905090565b7f0000000000000000000000000000000000000000000000000000000000000000336001600160a01b03821614610b4a576040516282b42960e81b815260040160405180910390fd5b5f805f5460ff166006811115610b6257610b62610f2c565b14610b8a575f54604051633bf2e2f960e11b815261047f91839160ff90911690600401610f68565b7f00000000000000000000000000000000000000000000000000000000000000003414610bf257604051633bfb3e2360e11b81527f0000000000000000000000000000000000000000000000000000000000000000600482015234602482015260440161047f565b3460018181555f805460ff191690911790556040519081527f2a89b2e3d580398d6dc2db5e0f336b52602bbaa51afa9bb5cdf59239cf0d2bea9060200160405180910390a15050565b7f0000000000000000000000000000000000000000000000000000000000000000336001600160a01b03821614610c84576040516282b42960e81b815260040160405180910390fd5b5f805f5460ff166006811115610c9c57610c9c610f2c565b14610cc4575f54604051633bf2e2f960e11b815261047f91839160ff90911690600401610f68565b5f805460ff191660061781556040517f63b958841f79ab97cb5456da181454b9932c0e15a3b17f1cbd27e2a8bc6104379190a15050565b336001600160a01b037f00000000000000000000000000000000000000000000000000000000000000001614801590610d5d5750336001600160a01b037f00000000000000000000000000000000000000000000000000000000000000001614155b15610d7a576040516282b42960e81b815260040160405180910390fd5b60015f5460ff166006811115610d9257610d92610f2c565b14158015610db6575060025f5460ff166006811115610db357610db3610f2c565b14155b15610dda575f54604051636309579360e01b815261047f9160ff1690600401610f54565b80610df85760405163317ac7df60e21b815260040160405180910390fd5b5f805460ff19166003178155600282905560405182917f1801c047724383abaab65b9bb8a52ee3204560c6bc2b52543437937c79097b8691a250565b600180545f918290556001600160a01b0383168252600460205260408220805491928392610e63908490610f9d565b90915550506040518181526001600160a01b038316907f459f560336b72d57e46610439b7c1a8426cf7b7a2a0428d5fb5c7b0b7528b60d9060200160405180910390a25050565b5f5f60408385031215610ebb575f5ffd5b50508035926020909101359150565b5f60208284031215610eda575f5ffd5b5035919050565b5f60208284031215610ef1575f5ffd5b81356001600160a01b0381168114610f07575f5ffd5b9392505050565b5f60208284031215610f1e575f5ffd5b813560028110610f07575f5ffd5b634e487b7160e01b5f52602160045260245ffd5b60078110610f5057610f50610f2c565b9052565b60208101610f628284610f40565b92915050565b60408101610f768285610f40565b610f076020830184610f40565b6020810160028310610f9757610f97610f2c565b91905290565b80820180821115610f6257634e487b7160e01b5f52601160045260245ffdfea2646970667358221220b81ca49655c7118ff0ec4dd83a84930c9cbc05d5a46c0c8241ee00ce414f2d2264736f6c63430008230033",
+    "sourceMap": "58:7142:17:-:0;;;1974:1;1949:26;;1982:1238;;;;;;;;;;;;;;;;;;;;;;;;;;;;:::i;:::-;-1:-1:-1;;;;;2254:20:17;;;;:57;;-1:-1:-1;;;;;;2290:21:17;;;2254:57;:98;;;-1:-1:-1;;;;;;2327:25:17;;;2254:98;2237:171;;;2384:13;;-1:-1:-1;;;2384:13:17;;;;;;;;;;;2237:171;2444:7;-1:-1:-1;;;;;2434:17:17;:6;-1:-1:-1;;;;;2434:17:17;;:42;;;;2465:11;-1:-1:-1;;;;;2455:21:17;:6;-1:-1:-1;;;;;2455:21:17;;2434:42;:68;;;;2491:11;-1:-1:-1;;;;;2480:22:17;:7;-1:-1:-1;;;;;2480:22:17;;2434:68;2417:149;;;2534:21;;-1:-1:-1;;;2534:21:17;;;;;;;;;;;2417:149;2579:20;2575:87;;2634:28;;-1:-1:-1;;;2634:28:17;;;;;;;;;;;2575:87;2676:25;2672:110;;2738:33;;-1:-1:-1;;;2738:33:17;;;;;;;;;;;2672:110;2795:15;2814:1;2795:20;2791:56;;2824:23;;-1:-1:-1;;;2824:23:17;;;;;;;;;;;2791:56;-1:-1:-1;;;;;2861:31:17;;2857:69;;2901:25;;-1:-1:-1;;;2901:25:17;;;;;;;;;;;2857:69;-1:-1:-1;;;;;2937:14:17;;;;;2961:16;;;;;2987:24;;;;;3021:42;;;;;3073:52;;3135:32;;3177:36;;;58:7142;;14:177:19;93:13;;-1:-1:-1;;;;;135:31:19;;125:42;;115:70;;181:1;178;171:12;115:70;14:177;;;:::o;196:748::-;320:6;328;336;344;352;360;368;421:3;409:9;400:7;396:23;392:33;389:53;;;438:1;435;428:12;389:53;461:40;491:9;461:40;:::i;:::-;451:50;;520:49;565:2;554:9;550:18;520:49;:::i;:::-;510:59;;588:49;633:2;622:9;618:18;588:49;:::i;:::-;699:2;684:18;;678:25;793:3;778:19;;772:26;864:3;849:19;;843:26;578:59;;-1:-1:-1;678:25:19;;-1:-1:-1;772:26:19;-1:-1:-1;843:26:19;-1:-1:-1;888:50:19;933:3;918:19;;888:50;:::i;:::-;878:60;;196:748;;;;;;;;;;:::o;:::-;58:7142:17;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;",
+    "linkReferences": {}
+  }
+}

@@ -50,6 +50,13 @@ async function setup(limit = 20) {
 }
 
 describe("agreement HTTP authorization", () => {
+  it("returns an unauthenticated production health check", async () => {
+    const { url } = await setup();
+    const response = await fetch(`${url}/health`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, service: "veyronis-backend" });
+  });
+
   it("returns 401 for both mutating routes without a session", async () => {
     const { url } = await setup();
     expect((await fetch(`${url}/agreements`, { method: "POST", body: JSON.stringify(draft) })).status).toBe(401);

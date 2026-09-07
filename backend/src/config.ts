@@ -54,11 +54,19 @@ export const loadDeploymentConfig = (
 const agreementServerSchema = deploymentSchema.extend({
   APP_ENV: z.enum(["local", "development", "production"]).default("development"),
   DATABASE_URL: z.string().min(1),
-  BACKEND_HOST: z.string().default("127.0.0.1"),
-  BACKEND_PORT: z.coerce.number().int().positive().max(65535).default(3001),
+  BACKEND_HOST: z.string().optional(),
+  BACKEND_PORT: z.coerce.number().int().positive().max(65535).optional(),
+  PORT: z.coerce.number().int().positive().max(65535).optional(),
+  FRONTEND_ORIGIN: z.string().url().optional(),
   SESSION_SECRET: z.string().min(16).optional(),
 });
-export type AgreementServerConfig = z.infer<typeof agreementServerSchema>;
+export type AgreementServerConfig = Omit<
+  z.infer<typeof agreementServerSchema>,
+  "BACKEND_HOST" | "BACKEND_PORT"
+> & {
+  BACKEND_HOST: string;
+  BACKEND_PORT: number;
+};
 export const loadAgreementServerConfig = (
   environment: NodeJS.ProcessEnv = process.env,
 ): AgreementServerConfig => {
@@ -74,8 +82,14 @@ export const loadAgreementServerConfig = (
       data.SESSION_SECRET === "development-only-change-me")
   )
     throw new ConfigurationError(["SESSION_SECRET"]);
+  if (data.APP_ENV === "production" && !data.FRONTEND_ORIGIN)
+    throw new ConfigurationError(["FRONTEND_ORIGIN"]);
   return {
     ...data,
+    BACKEND_HOST:
+      data.BACKEND_HOST ??
+      (data.APP_ENV === "production" ? "0.0.0.0" : "127.0.0.1"),
+    BACKEND_PORT: data.BACKEND_PORT ?? data.PORT ?? 3001,
     SESSION_SECRET: data.SESSION_SECRET ?? "development-only-change-me",
   };
 };

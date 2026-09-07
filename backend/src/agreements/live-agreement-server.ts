@@ -17,28 +17,35 @@ import { createLiveAttestcoinVerifier } from "../attestcoin/live-verifier.js";
 const config = loadAgreementServerConfig();
 const artifactPath = resolve(
   fileURLToPath(new URL(".", import.meta.url)),
-  "../../../contracts/out/VeyronisEscrow.sol/VeyronisEscrow.json",
+  "../contracts/VeyronisEscrow.json",
 );
 const artifact = JSON.parse(await readFile(artifactPath, "utf8")) as {
   abi: unknown[];
   bytecode: { object: string };
 };
 const provider = new JsonRpcProvider(config.DEPLOYER_RPC_URL);
+const sepoliaVerifierProvider = new JsonRpcProvider(config.DEPLOYER_RPC_URL);
 const deployer = new EthersEscrowDeployer(
   new Wallet(config.DEPLOYER_PRIVATE_KEY, provider),
   artifact.abi as InterfaceAbi,
   artifact.bytecode.object,
 );
-const database = new Pool({ connectionString: config.DATABASE_URL });
+const database = createDatabasePool(config.DATABASE_URL);
 const service = new AgreementCreationService(
   new SqlAgreementRepository(database),
   deployer,
 );
 const auth = new WalletAuthService(config.SESSION_SECRET!);
 const dashboard = new AgreementDashboardService(new SqlAgreementRepository(database), new EthersAgreementContractReader(provider));
-const attestcoinVerifier = (() => {
-  try { return createLiveAttestcoinVerifier(loadConfig()); } catch { return undefined; }
-})();
+const attestcoinVerifier = config.APP_ENV === "production"
+  ? await createLiveAttestcoinVerifier(loadConfig(), sepoliaVerifierProvider)
+  : await (async () => {
+      try {
+        return await createLiveAttestcoinVerifier(loadConfig(), sepoliaVerifierProvider);
+      } catch {
+        return undefined;
+      }
+    })();
 const server = createServer(createAgreementHttpHandler(service, {
   auth,
   dashboard,
@@ -50,3 +57,17 @@ server.listen(config.BACKEND_PORT, config.BACKEND_HOST, () => {
     `Veyronis agreement backend listening on http://${config.BACKEND_HOST}:${config.BACKEND_PORT}`,
   );
 });
+
+function createDatabasePool(connectionString: string): Pool {
+  const url = new URL(connectionString);
+  const localHost = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  const sslDisabled = url.searchParams.get("sslmode") === "disable";
+  const ssl = localHost || sslDisabled ? undefined : { rejectUnauthorized: true };
+  return new Pool({
+    connectionString,
+    max: 5,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+    ...(ssl ? { ssl } : {}),
+  });
+}

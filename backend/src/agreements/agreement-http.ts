@@ -30,6 +30,10 @@ export function createAgreementHttpHandler(
     response: ServerResponse,
   ): Promise<void> => {
     try {
+      if (request.method === "GET" && request.url === "/health") {
+        sendJson(response, 200, { ok: true, service: "veyronis-backend" });
+        return;
+      }
       if (request.method === "OPTIONS") {
         response.writeHead(204, corsHeaders());
         response.end();
@@ -253,9 +257,11 @@ function sendJson(
 }
 
 function corsHeaders(): Record<string, string> {
+  const configuredOrigin = process.env.FRONTEND_ORIGIN;
+  if (!configuredOrigin && process.env.APP_ENV === "production")
+    throw new Error("FRONTEND_ORIGIN is required in production");
   return {
-    "access-control-allow-origin":
-      process.env.FRONTEND_ORIGIN ?? "http://127.0.0.1:3000",
+    "access-control-allow-origin": configuredOrigin ?? "http://127.0.0.1:3000",
     "access-control-allow-methods": "GET, POST, OPTIONS",
     "access-control-allow-headers": "content-type",
     "access-control-allow-credentials": "true",

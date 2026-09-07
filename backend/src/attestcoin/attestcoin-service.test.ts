@@ -31,6 +31,8 @@ async function setup() {
     merkleProof: { root: "0x" + "22".repeat(32), siblings: [] }, cached: false, generatedAt: new Date(),
   };
   const service = new AttestcoinService(config);
+  service.creditcoinProvider.getNetwork = async () =>
+    ({ chainId: 102031n, name: "creditcoin" }) as never;
   service.chainInfo.getSupportedChainByKey = async () => ({ chainKey: 1, chainId: 11155111, chainName: "0x", chainEncoding: 1 });
   service.proofBuilder.getProof = async () => ({ success: true, data: proofData });
   service.blockProver.computeTransactionIndex = async () => 0;
@@ -52,6 +54,16 @@ async function setup() {
 }
 
 describe("AttestcoinService", () => {
+  it("rejects a Creditcoin provider connected to another chain", async () => {
+    const { service, request } = await setup();
+    service.creditcoinProvider.getNetwork = async () =>
+      ({ chainId: 1n, name: "wrong-chain" }) as never;
+    expect(await service.verify(request)).toMatchObject({
+      ok: false,
+      code: "CONFIGURATION_MISSING",
+    });
+  });
+
   it("distinguishes generated proofs from precompile verification", async () => {
     const { service, request } = await setup();
     service.blockProver.verifySingle = async () => false;

@@ -7,7 +7,6 @@ import type {
 } from "@veyronis/shared";
 import {
   AttestcoinVerifier,
-  computeClaimId,
   computeEvidenceCommitment,
   computeEvidencePolicyCommitment,
 } from "./attestcoin-verifier.js";
@@ -50,6 +49,7 @@ const evidenceCommitment = computeEvidenceCommitment(
   transactionHash,
   buyer,
 );
+const acceptedClaimId = id("accepted claim");
 
 const request: AttestcoinProofRequest = {
   escrowAddress,
@@ -108,6 +108,12 @@ class FakeEscrowReader implements EscrowContextReader {
   async readDisputeContext() {
     return this.context;
   }
+
+  verifiedClaimId = acceptedClaimId;
+
+  async readVerifiedClaimId() {
+    return this.verifiedClaimId;
+  }
 }
 
 class FakeRegistry implements EvidenceClaimRegistryGateway {
@@ -125,7 +131,7 @@ class FakeRegistry implements EvidenceClaimRegistryGateway {
     if (this.rejection) throw this.rejection;
     this.submitted = claim;
     return {
-      claimId: computeClaimId(claim),
+      claimId: acceptedClaimId,
       transactionHash: id("registry transaction"),
     };
   }
