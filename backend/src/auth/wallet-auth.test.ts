@@ -1,6 +1,10 @@
 import { Wallet } from "ethers";
 import { describe, expect, it } from "vitest";
-import { sessionCookie, WalletAuthService } from "./wallet-auth.js";
+import {
+  expiredSessionCookie,
+  sessionCookie,
+  WalletAuthService,
+} from "./wallet-auth.js";
 
 describe("WalletAuthService", () => {
   it("verifies a one-time wallet signature and issues an expiring session", async () => {
@@ -24,10 +28,16 @@ describe("WalletAuthService", () => {
 });
 
 describe("sessionCookie", () => {
+  it("uses cross-site-safe attributes in production", () => {
+    expect(sessionCookie("token", "production")).toContain("Secure");
+    expect(sessionCookie("token", "production")).toContain("HttpOnly");
+    expect(sessionCookie("token", "production")).toContain("SameSite=None");
+  });
+
   it("uses Secure outside local while preserving HttpOnly and SameSite", () => {
     expect(sessionCookie("token", "production")).toContain("Secure");
     expect(sessionCookie("token", "production")).toContain("HttpOnly");
-    expect(sessionCookie("token", "production")).toContain("SameSite=Lax");
+    expect(sessionCookie("token", "development")).toContain("SameSite=Lax");
   });
 
   it("remains HTTP-compatible locally", () => {
@@ -35,5 +45,12 @@ describe("sessionCookie", () => {
     expect(cookie).toContain("HttpOnly");
     expect(cookie).toContain("SameSite=Lax");
     expect(cookie).not.toContain("Secure");
+  });
+
+  it("clears production sessions with the same cross-site-safe policy", () => {
+    expect(expiredSessionCookie("production")).toContain("Max-Age=0");
+    expect(expiredSessionCookie("production")).toContain("HttpOnly");
+    expect(expiredSessionCookie("production")).toContain("SameSite=None");
+    expect(expiredSessionCookie("production")).toContain("Secure");
   });
 });

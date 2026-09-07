@@ -87,10 +87,19 @@ export class WalletAuthService {
   }
 }
 
-export const sessionCookie = (token: string, appEnv = process.env.APP_ENV ?? "development") =>
-  `veyronis_session=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=28800${appEnv === "local" ? "" : "; Secure"}`;
-export const expiredSessionCookie = (appEnv = process.env.APP_ENV ?? "development") =>
-  `veyronis_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${appEnv === "local" ? "" : "; Secure"}`;
+function cookiePolicy(appEnv: string): string {
+  const sameSite = appEnv === "production" ? "None" : "Lax";
+  const secure = appEnv === "local" ? "" : "; Secure";
+  return `HttpOnly; Path=/; SameSite=${sameSite}${secure}`;
+}
+
+export const sessionCookie = (
+  token: string,
+  appEnv = process.env.APP_ENV ?? "development",
+) => `veyronis_session=${token}; ${cookiePolicy(appEnv)}; Max-Age=28800`;
+export const expiredSessionCookie = (
+  appEnv = process.env.APP_ENV ?? "development",
+) => `veyronis_session=; ${cookiePolicy(appEnv)}; Max-Age=0`;
 export function readCookie(
   header: string | undefined,
   name: string,
