@@ -6,20 +6,25 @@
     "dev": "next dev",
     "build": "next build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "node --env-file=.env ../node_modules/vitest/vitest.mjs run --passWithNoTests"
   },
   "dependencies": {
+    "@rainbow-me/rainbowkit": "^2.2.11",
     "@tanstack/react-query": "^5.102.8",
-    "@walletconnect/ethereum-provider": "^2.24.0",
     "@veyronis/shared": "0.1.0",
-    "ethers": "^6.15.0",
+    "@walletconnect/ethereum-provider": "^2.24.0",
+    "@x402/core": "^2.25.0",
+    "@x402/evm": "^2.25.0",
+    "@x402/extensions": "^2.25.0",
+    "@x402/svm": "^2.25.0",
+    "ethers": "^6.17.0",
     "next": "^15.5.2",
     "ox": "^0.11.3",
     "permissionless": "^0.4.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "viem": "^2.56.0",
-    "wagmi": "^3.7.7",
+    "wagmi": "^2.19.5",
     "zod": "^4.0.17"
   },
   "devDependencies": {

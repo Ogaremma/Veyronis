@@ -14,6 +14,12 @@ const actionAbi = [
   "function resolveDispute(uint8)", "function withdraw()",
 ];
 
+declare global {
+  interface Window {
+    ethereum?: unknown;
+  }
+}
+
 export default function AgreementDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const [detail, setDetail] = useState<AgreementDetails>();

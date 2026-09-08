@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { BrowserProvider, formatEther, isAddress, parseEther } from "ethers";
 import { useAccount, useConnect, useConnectors, useDisconnect } from "wagmi";
 import { AppShell, type AppSection } from "./ui/app-shell";
@@ -12,9 +12,20 @@ import { walletConnectConfigured } from "./web3-config";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL as string;
 
+type RainbowKitConnectorDetails = {
+  id: string;
+  name: string;
+  rdns?: string;
+  isWalletConnectModalConnector?: boolean;
+};
+
+type WalletConnector = ReturnType<typeof useConnectors>[number] & {
+  rkDetails?: RainbowKitConnectorDetails;
+};
+
 export default function Home() {
   const { address, connector, isConnected } = useAccount();
-  const connectors = useConnectors();
+  const connectors = useConnectors() as WalletConnector[];
   const { connectAsync } = useConnect();
   const { disconnect } = useDisconnect();
   const [authenticatedAddress, setAuthenticatedAddress] = useState("");
@@ -23,6 +34,44 @@ export default function Home() {
   const [sendOpen, setSendOpen] = useState(false);
   const [busyConnector, setBusyConnector] = useState("");
   const [connectionError, setConnectionError] = useState("");
+
+  const walletConnectorOptions = useMemo(() => {
+    const rainbowKitConnectors = connectors.filter(
+      (candidate) => candidate.rkDetails && candidate.rkDetails.id !== "walletConnect",
+    );
+    const walletConnectConnector =
+      connectors.find(
+        (candidate) =>
+          candidate.rkDetails?.id === "walletConnect" &&
+          candidate.rkDetails?.isWalletConnectModalConnector,
+      ) ??
+      connectors.find((candidate) => candidate.rkDetails?.id === "walletConnect");
+    const injectedConnector = connectors.find(
+      (candidate) => !candidate.rkDetails && candidate.id === "injected",
+    );
+    const rainbowKitRdns = new Set(
+      rainbowKitConnectors
+        .map((candidate) => candidate.rkDetails?.rdns)
+        .filter(Boolean),
+    );
+    const discoveredConnectors = connectors.filter(
+      (candidate) =>
+        !candidate.rkDetails &&
+        candidate.id !== "injected" &&
+        !rainbowKitRdns.has(candidate.id),
+    );
+
+    return [
+      ...rainbowKitConnectors,
+      ...discoveredConnectors,
+      ...(walletConnectConnector ? [walletConnectConnector] : []),
+      ...(injectedConnector ? [injectedConnector] : []),
+    ].map((candidate) => ({
+      id: candidate.rkDetails?.id ?? candidate.id,
+      name: candidate.rkDetails?.name ?? candidate.name,
+      type: candidate.type,
+    }));
+  }, [connectors]);
 
   useEffect(() => {
     if (!isConnected || !address || !connector || authenticatedAddress !== address) return;
@@ -34,7 +83,9 @@ export default function Home() {
   }, [address, authenticatedAddress, connector, isConnected]);
 
   async function connectWallet(connectorId: string) {
-    const nextConnector = connectors.find((candidate) => candidate.id === connectorId);
+    const nextConnector = connectors.find(
+      (candidate) => (candidate.rkDetails?.id ?? candidate.id) === connectorId,
+    );
     if (!nextConnector) return;
     setBusyConnector(connectorId); setConnectionError("");
     try {
@@ -75,7 +126,7 @@ export default function Home() {
     return transaction.hash;
   }
 
-  if (!isConnected || !address || authenticatedAddress.toLowerCase() !== address.toLowerCase()) return <WalletOnboarding connectors={connectors.map(({ id, name, type }) => ({ id, name, type }))} connect={connectWallet} walletConnectConfigured={walletConnectConfigured} busyConnector={busyConnector} error={connectionError} />;
+  if (!isConnected || !address || authenticatedAddress.toLowerCase() !== address.toLowerCase()) return <WalletOnboarding connectors={walletConnectorOptions} connect={connectWallet} walletConnectConfigured={walletConnectConfigured} busyConnector={busyConnector} error={connectionError} />;
   return <AppShell address={address} section={section} setSection={setSection} lock={lock}>
     {section === "wallet" && <DashboardHome address={address} balance={balance} sendOpen={sendOpen} setSendOpen={setSendOpen} sendEth={sendEth} />}
     {section === "escrow" && <EscrowModule walletAddress={address} />}
