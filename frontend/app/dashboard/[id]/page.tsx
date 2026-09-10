@@ -2,10 +2,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { BrowserProvider, Contract, ZeroHash, getAddress } from "ethers";
+import { useAccount } from "wagmi";
 import type { AgreementAction, AgreementDetails, TransactionReceiptInfo } from "@veyronis/shared";
 import { AgreementDetailView } from "../agreement-detail-view";
 import { executeWalletTransaction } from "../../transaction-executor";
 import { explorerTransactionUrl } from "../../network-config";
+import { requiredTransactionChainId, transactionNetworkError } from "../../transaction-network-guard";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL as string;
 const actionAbi = [
@@ -22,6 +24,7 @@ declare global {
 
 export default function AgreementDetailsPage() {
   const { id } = useParams<{ id: string }>();
+  const { chainId } = useAccount();
   const [detail, setDetail] = useState<AgreementDetails>();
   const [error, setError] = useState("");
   const [transaction, setTransaction] = useState<TransactionReceiptInfo>({ status: "IDLE" });
@@ -34,6 +37,11 @@ export default function AgreementDetailsPage() {
 
   async function execute(action: AgreementAction) {
     setError("");
+    const networkError = transactionNetworkError(chainId, requiredTransactionChainId());
+    if (networkError) {
+      setError(networkError);
+      return;
+    }
     if (!window.ethereum || !detail?.chain) {
       setError("Connect the authenticated participant wallet first.");
       return;

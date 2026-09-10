@@ -8,6 +8,7 @@ import { WalletOnboarding } from "./wallet/wallet-onboarding";
 import { DashboardHome } from "./wallet/dashboard-home";
 import { EscrowModule } from "./escrow/escrow-module";
 import { PlaceholderModule } from "./ui/placeholder-module";
+import { getNetworkLabel, getNetworkName } from "./network-label";
 import { walletConnectConfigured } from "./web3-config";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL as string;
@@ -15,7 +16,7 @@ const API = process.env.NEXT_PUBLIC_BACKEND_URL as string;
 type WalletConnector = ReturnType<typeof useConnectors>[number];
 
 export default function Home() {
-  const { address, connector, isConnected } = useAccount();
+  const { address, chainId, connector, isConnected } = useAccount();
   const connectors = useConnectors() as WalletConnector[];
   const { connectAsync } = useConnect();
   const { disconnect } = useDisconnect();
@@ -25,6 +26,8 @@ export default function Home() {
   const [sendOpen, setSendOpen] = useState(false);
   const [busyConnector, setBusyConnector] = useState("");
   const [connectionError, setConnectionError] = useState("");
+  const networkLabel = getNetworkLabel(chainId);
+  const networkName = getNetworkName(chainId);
 
   const walletConnectorOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -89,9 +92,9 @@ export default function Home() {
   }
 
   if (!isConnected || !address || authenticatedAddress.toLowerCase() !== address.toLowerCase()) return <WalletOnboarding connectors={walletConnectorOptions} connect={connectWallet} walletConnectConfigured={walletConnectConfigured} busyConnector={busyConnector} error={connectionError} />;
-  return <AppShell address={address} section={section} setSection={setSection} lock={lock}>
-    {section === "wallet" && <DashboardHome address={address} balance={balance} sendOpen={sendOpen} setSendOpen={setSendOpen} sendEth={sendEth} />}
-    {section === "escrow" && <EscrowModule walletAddress={address} />}
+  return <AppShell address={address} networkLabel={networkLabel} section={section} setSection={setSection} lock={lock}>
+    {section === "wallet" && <DashboardHome address={address} balance={balance} networkName={networkName} sendOpen={sendOpen} setSendOpen={setSendOpen} sendEth={sendEth} />}
+    {section === "escrow" && <EscrowModule walletAddress={address} networkName={networkName} />}
     {section === "marketplace" && <PlaceholderModule kind="marketplace" />}{section === "proofs" && <PlaceholderModule kind="proofs" />}{section === "reputation" && <PlaceholderModule kind="reputation" />}{section === "activity" && <PlaceholderModule kind="activity" />}
   </AppShell>;
 }
