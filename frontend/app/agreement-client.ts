@@ -2,12 +2,25 @@ import type {
   AgreementDetails,
   AgreementDraft,
   AgreementMetadata,
+  WorkEvidenceReview,
+  WorkEvidenceSubmission,
+  WorkEvidenceSubmissionInput,
 } from "@veyronis/shared";
 
 export interface AgreementCreationClient {
   prepare(draft: AgreementDraft): Promise<AgreementMetadata>;
   confirmAndDeploy(id: string): Promise<AgreementMetadata>;
   getAgreement(id: string): Promise<AgreementDetails>;
+  listWorkEvidence(id: string): Promise<WorkEvidenceSubmission[]>;
+  submitWorkEvidence(
+    id: string,
+    input: WorkEvidenceSubmissionInput,
+  ): Promise<WorkEvidenceSubmission>;
+  reviewWorkEvidence(
+    id: string,
+    submissionId: string,
+    review: WorkEvidenceReview,
+  ): Promise<WorkEvidenceSubmission>;
 }
 
 async function agreementRequestErrorMessage(response: Response): Promise<string> {
@@ -61,6 +74,36 @@ export class HttpAgreementCreationClient implements AgreementCreationClient {
 
   async getAgreement(id: string): Promise<AgreementDetails> {
     return this.request<AgreementDetails>(`/agreements/${id}`, { method: "GET" });
+  }
+
+  async listWorkEvidence(
+    id: string,
+  ): Promise<WorkEvidenceSubmission[]> {
+    return this.request<WorkEvidenceSubmission[]>(
+      `/agreements/${id}/work-evidence`,
+      { method: "GET" },
+    );
+  }
+
+  async submitWorkEvidence(
+    id: string,
+    input: WorkEvidenceSubmissionInput,
+  ): Promise<WorkEvidenceSubmission> {
+    return this.request<WorkEvidenceSubmission>(
+      `/agreements/${id}/work-evidence`,
+      { method: "POST", body: JSON.stringify(input) },
+    );
+  }
+
+  async reviewWorkEvidence(
+    id: string,
+    submissionId: string,
+    review: WorkEvidenceReview,
+  ): Promise<WorkEvidenceSubmission> {
+    return this.request<WorkEvidenceSubmission>(
+      `/agreements/${id}/work-evidence/${submissionId}/review`,
+      { method: "POST", body: JSON.stringify(review) },
+    );
   }
 
   private async request<TResult>(

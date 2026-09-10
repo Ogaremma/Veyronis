@@ -12,6 +12,8 @@ import { EthersEscrowDeployer } from "./escrow-deployer.js";
 import { WalletAuthService } from "../auth/wallet-auth.js";
 import { EthersAgreementContractReader } from "./contract-read-layer.js";
 import { AgreementDashboardService } from "./dashboard-service.js";
+import { WorkEvidenceService } from "./work-evidence-service.js";
+import { SqlWorkEvidenceRepository } from "./work-evidence-repository.js";
 import { createLiveAttestcoinVerifier } from "../attestcoin/live-verifier.js";
 
 const config = loadAgreementServerConfig();
@@ -31,12 +33,17 @@ const deployer = new EthersEscrowDeployer(
   artifact.bytecode.object,
 );
 const database = createDatabasePool(config.DATABASE_URL);
-const service = new AgreementCreationService(
-  new SqlAgreementRepository(database),
-  deployer,
-);
+const agreementRepository = new SqlAgreementRepository(database);
+const service = new AgreementCreationService(agreementRepository, deployer);
 const auth = new WalletAuthService(config.SESSION_SECRET!);
-const dashboard = new AgreementDashboardService(new SqlAgreementRepository(database), new EthersAgreementContractReader(provider));
+const dashboard = new AgreementDashboardService(
+  agreementRepository,
+  new EthersAgreementContractReader(provider),
+);
+const workEvidence = new WorkEvidenceService(
+  agreementRepository,
+  new SqlWorkEvidenceRepository(database),
+);
 const attestcoinVerifier = config.APP_ENV === "production"
   ? await createLiveAttestcoinVerifier(loadConfig(), sepoliaVerifierProvider)
   : await (async () => {
@@ -49,6 +56,7 @@ const attestcoinVerifier = config.APP_ENV === "production"
 const server = createServer(createAgreementHttpHandler(service, {
   auth,
   dashboard,
+  workEvidence,
   appEnv: config.APP_ENV,
   ...(attestcoinVerifier ? { attestcoinVerifier } : {}),
 }));

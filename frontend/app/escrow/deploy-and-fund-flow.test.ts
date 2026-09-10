@@ -10,6 +10,22 @@ const deployed = {
   id: "0x1000000000000000000000000000000000000000000000000000000000000001",
   escrowAddress: "0x4000000000000000000000000000000000000004",
   deploymentStatus: "DEPLOYED",
+  deliverables: [{
+    id: "11111111-1111-4111-8111-111111111111",
+    title: "Product shipment",
+    description: "10 custom T-shirts delivered to buyer.",
+    required: true,
+    active: true,
+    position: 0,
+    evidenceRequirements: [{
+      id: "22222222-2222-4222-8222-222222222222",
+      label: "Tracking URL",
+      kind: "TRACKING_URL",
+      required: true,
+      configuration: {},
+      position: 0,
+    }],
+  }],
 } as AgreementMetadata;
 
 function details(state: "AwaitingPayment" | "AwaitingDelivery"): AgreementDetails {
@@ -50,6 +66,7 @@ describe("deploy and fund flow", () => {
       funded: false,
       state: "AwaitingPayment",
     });
+    expect(result.details?.metadata.deliverables).toEqual(deployed.deliverables);
     expect(fundEscrow).toHaveBeenCalledOnce();
     expect(getAgreement).toHaveBeenCalledTimes(2);
   });

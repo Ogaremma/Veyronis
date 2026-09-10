@@ -52,6 +52,38 @@ describe("agreement creation client", () => {
     });
   });
 
+  it("uses the wallet session cookie for work evidence submission and review", async () => {
+    const submission = { id: "11111111-1111-4111-8111-111111111111" };
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse(200, submission)));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new HttpAgreementCreationClient("https://backend.example");
+
+    await client.listWorkEvidence(metadata.id);
+    await client.submitWorkEvidence(metadata.id, {
+      requirementId: submission.id,
+      value: "https://example.com",
+    });
+    await client.reviewWorkEvidence(metadata.id, submission.id, { status: "accepted" });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "https://backend.example/agreements/0x1/work-evidence", {
+      method: "GET",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "https://backend.example/agreements/0x1/work-evidence", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ requirementId: submission.id, value: "https://example.com" }),
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "https://backend.example/agreements/0x1/work-evidence/11111111-1111-4111-8111-111111111111/review", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: "accepted" }),
+    });
+  });
+
   it("surfaces safe backend error messages", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(401, {
       error: "Wallet authentication required",

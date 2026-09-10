@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import "./globals.css";
 import "./connect-wallet.css";
+import "./escrow/work-evidence.css";
 import { Web3Provider } from "./web3-provider";
 
 export default function RootLayout({

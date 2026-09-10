@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AbiCoder, keccak256 } from "ethers";
+import { AbiCoder, keccak256, toUtf8Bytes, ZeroHash } from "ethers";
 
 export const evidenceReferenceSchema = z.object({
   escrowAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
@@ -125,6 +125,43 @@ export const deploymentStatusSchema = z.enum([
 ]);
 export type DeploymentStatus = z.infer<typeof deploymentStatusSchema>;
 
+export const workEvidenceKindSchema = z.enum([
+  "PHOTO",
+  "FILE",
+  "PDF",
+  "URL",
+  "GITHUB_REPOSITORY",
+  "GITHUB_COMMIT",
+  "TRACKING_URL",
+  "RECEIPT",
+  "TEXT",
+  "TRANSACTION_HASH",
+]);
+export type WorkEvidenceKind = z.infer<typeof workEvidenceKindSchema>;
+
+export const evidenceRequirementSchema = z.object({
+  id: z.string().uuid(),
+  label: z.string().min(1).max(160),
+  kind: workEvidenceKindSchema,
+  required: z.boolean(),
+  configuration: z.record(z.string(), z.string()).default({}),
+  position: z.number().int().min(0).max(999),
+});
+export type AgreementEvidenceRequirement = z.infer<
+  typeof evidenceRequirementSchema
+>;
+
+export const agreementDeliverableSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string().min(1).max(160),
+  description: z.string().max(2000).default(""),
+  required: z.boolean(),
+  active: z.boolean(),
+  position: z.number().int().min(0).max(999),
+  evidenceRequirements: z.array(evidenceRequirementSchema).max(20).default([]),
+});
+export type AgreementDeliverable = z.infer<typeof agreementDeliverableSchema>;
+
 export const agreementDraftSchema = z.object({
   buyer: addressSchema,
   seller: addressSchema,
@@ -133,6 +170,7 @@ export const agreementDraftSchema = z.object({
   agreementNonce: bytes32Schema,
   evidenceRegistry: addressSchema,
   policy: evidencePolicySchema,
+  deliverables: z.array(agreementDeliverableSchema).max(50).optional(),
 });
 export type AgreementDraft = z.infer<typeof agreementDraftSchema>;
 
@@ -163,6 +201,35 @@ export type EscrowState = z.infer<typeof escrowStateSchema>;
 
 export const participantRoleSchema = z.enum(["buyer", "seller", "arbitrator"]);
 export type ParticipantRole = z.infer<typeof participantRoleSchema>;
+
+export const workEvidenceSubmissionInputSchema = z.object({
+  requirementId: z.string().uuid(),
+  value: z.string().min(1).max(2048),
+  contentHash: z.string().max(128).optional(),
+  mimeType: z.string().max(128).optional(),
+  byteSize: uint64StringSchema.optional(),
+});
+export type WorkEvidenceSubmissionInput = z.infer<
+  typeof workEvidenceSubmissionInputSchema
+>;
+
+export const workEvidenceReviewSchema = z.object({
+  status: z.enum(["accepted", "rejected"]),
+  reviewNote: z.string().max(1000).optional(),
+});
+export type WorkEvidenceReview = z.infer<typeof workEvidenceReviewSchema>;
+
+export interface WorkEvidenceSubmission
+  extends WorkEvidenceSubmissionInput {
+  id: string;
+  agreementId: string;
+  submitter: string;
+  status: "submitted" | "accepted" | "rejected";
+  reviewNote?: string;
+  submittedAt: string;
+  reviewedAt?: string;
+  updatedAt: string;
+}
 
 export const agreementActionSchema = z.enum([
   "deposit",
@@ -248,6 +315,32 @@ export interface AgreementDetails extends AgreementDashboardItem {
 
 const commitmentCoder = AbiCoder.defaultAbiCoder();
 
+/** Canonical application-level work evidence subcommitment. */
+export function computeWorkEvidenceCommitment(
+  deliverables: readonly AgreementDeliverable[] = [],
+): string {
+  if (deliverables.length === 0) return ZeroHash;
+  const canonical = sortDeliverables(deliverables).map((deliverable) => ({
+    id: deliverable.id,
+    title: deliverable.title,
+    description: deliverable.description,
+    required: deliverable.required,
+    active: deliverable.active,
+    position: deliverable.position,
+    evidenceRequirements: sortRequirements(
+      deliverable.evidenceRequirements,
+    ).map((requirement) => ({
+      id: requirement.id,
+      label: requirement.label,
+      kind: requirement.kind,
+      required: requirement.required,
+      configuration: canonicalConfiguration(requirement.configuration),
+      position: requirement.position,
+    })),
+  }));
+  return keccak256(toUtf8Bytes(canonicalJson(canonical)));
+}
+
 /** Canonical Phase 5 policy commitment. Field order and widths mirror Solidity exactly. */
 export function computeEvidencePolicyCommitment(
   policy: EvidencePolicy,
@@ -295,7 +388,7 @@ export function computeAgreementCommitment(
   draft: AgreementDraft,
   policyCommitment = computeEvidencePolicyCommitment(draft.policy),
 ): string {
-  return keccak256(
+  const participantsAndTermsCommitment = keccak256(
     commitmentCoder.encode(
       [
         "address",
@@ -317,6 +410,54 @@ export function computeAgreementCommitment(
       ],
     ),
   );
+  const workEvidenceCommitment = computeWorkEvidenceCommitment(
+    draft.deliverables ?? [],
+  );
+  if (workEvidenceCommitment === ZeroHash)
+    return participantsAndTermsCommitment;
+  return keccak256(
+    commitmentCoder.encode(
+      ["bytes32", "bytes32"],
+      [participantsAndTermsCommitment, workEvidenceCommitment],
+    ),
+  );
+}
+
+function sortDeliverables(
+  deliverables: readonly AgreementDeliverable[],
+): AgreementDeliverable[] {
+  return [...deliverables].sort(
+    (left, right) =>
+      left.position - right.position || left.id.localeCompare(right.id),
+  );
+}
+
+function sortRequirements(
+  requirements: readonly AgreementEvidenceRequirement[],
+): AgreementEvidenceRequirement[] {
+  return [...requirements].sort(
+    (left, right) =>
+      left.position - right.position || left.id.localeCompare(right.id),
+  );
+}
+
+function canonicalConfiguration(configuration: Record<string, string>) {
+  return Object.fromEntries(
+    Object.entries(configuration).sort(([left], [right]) =>
+      left.localeCompare(right),
+    ),
+  );
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
 }
 
 export function validateAgreementDraft(input: unknown): AgreementDraft {

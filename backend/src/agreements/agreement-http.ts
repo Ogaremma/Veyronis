@@ -2,6 +2,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { getAddress } from "ethers";
 import type { AgreementCreationService } from "./agreement-service.js";
 import type { AgreementDashboardService } from "./dashboard-service.js";
+import type { WorkEvidenceService } from "./work-evidence-service.js";
+import { WorkEvidenceServiceError } from "./work-evidence-service.js";
 import type { AttestcoinVerifier } from "../attestcoin/attestcoin-verifier.js";
 import { computeEvidenceCommitment } from "../attestcoin/attestcoin-verifier.js";
 import { isHexString } from "ethers";
@@ -21,10 +23,12 @@ export function createAgreementHttpHandler(
     creationLimiter?: InMemoryRateLimiter;
     confirmationLimiter?: InMemoryRateLimiter;
     attestcoinVerifier?: Pick<AttestcoinVerifier, "verifyAndSubmit">;
+    workEvidence?: WorkEvidenceService;
   },
 ) {
   const creationLimiter = options?.creationLimiter ?? new InMemoryRateLimiter();
   const confirmationLimiter = options?.confirmationLimiter ?? new InMemoryRateLimiter();
+  const workEvidence = options?.workEvidence;
   return async (
     request: IncomingMessage,
     response: ServerResponse,
@@ -92,6 +96,16 @@ export function createAgreementHttpHandler(
           );
           return;
         }
+        const workEvidenceList = request.url?.match(
+          /^\/agreements\/(0x[a-fA-F0-9]{64})\/work-evidence$/,
+        );
+        if (workEvidenceList?.[1] && workEvidence) {
+          await sendWorkEvidenceResult(
+            response,
+            workEvidence.list(workEvidenceList[1], session.address),
+          );
+          return;
+        }
         const match = request.url?.match(/^\/agreements\/(0x[a-fA-F0-9]{64})$/);
         if (match?.[1]) {
           sendJson(
@@ -152,6 +166,42 @@ export function createAgreementHttpHandler(
         sendJson(response, 200, { ok: true, claimId: result.claimId, registryTransactionHash: result.transactionHash, evidence: { sourceChainKey: result.claim.sourceChainKey, sourceTransactionHash: result.claim.sourceTransactionHash, subject: result.claim.subject, evidenceType: result.claim.evidenceType } });
         return;
       }
+      const workEvidenceSubmission = request.url?.match(
+        /^\/agreements\/(0x[a-fA-F0-9]{64})\/work-evidence$/,
+      );
+      const submissionAgreementId = workEvidenceSubmission?.[1];
+      if (submissionAgreementId && workEvidence) {
+        const session = authenticatedSession(request, options?.auth, response);
+        if (!session) return;
+        await sendWorkEvidenceResult(
+          response,
+          workEvidence.submit(
+            submissionAgreementId,
+            session.address,
+            await readJson(request),
+          ),
+        );
+        return;
+      }
+      const workEvidenceReview = request.url?.match(
+        /^\/agreements\/(0x[a-fA-F0-9]{64})\/work-evidence\/([0-9a-fA-F-]{36})\/review$/,
+      );
+      const reviewAgreementId = workEvidenceReview?.[1];
+      const reviewSubmissionId = workEvidenceReview?.[2];
+      if (reviewAgreementId && reviewSubmissionId && workEvidence) {
+        const session = authenticatedSession(request, options?.auth, response);
+        if (!session) return;
+        await sendWorkEvidenceResult(
+          response,
+          workEvidence.review(
+            reviewAgreementId,
+            reviewSubmissionId,
+            session.address,
+            await readJson(request),
+          ),
+        );
+        return;
+      }
       const confirmation =
         request.method === "POST"
           ? request.url?.match(/^\/agreements\/(0x[a-fA-F0-9]{64})\/confirm$/)
@@ -181,6 +231,25 @@ export function createAgreementHttpHandler(
       sendJson(response, 400, { error: "Agreement request rejected" });
     }
   };
+}
+
+async function sendWorkEvidenceResult(
+  response: ServerResponse,
+  result: Promise<unknown>,
+): Promise<void> {
+  try {
+    sendJson(response, 200, await result);
+  } catch (error) {
+    if (error instanceof WorkEvidenceServiceError) {
+      sendJson(response, error.status, { error: error.message });
+      return;
+    }
+    if (error instanceof Error && error.name === "ZodError") {
+      sendJson(response, 400, { error: "Invalid work evidence request" });
+      return;
+    }
+    throw error;
+  }
 }
 
 function authenticatedSession(

@@ -5,6 +5,7 @@ import { BrowserProvider, Contract, ZeroHash, getAddress } from "ethers";
 import { useAccount } from "wagmi";
 import type { AgreementAction, AgreementDetails, TransactionReceiptInfo } from "@veyronis/shared";
 import { AgreementDetailView } from "../agreement-detail-view";
+import { WorkEvidencePanel } from "../work-evidence-panel";
 import { executeWalletTransaction } from "../../transaction-executor";
 import { explorerTransactionUrl } from "../../network-config";
 import { requiredTransactionChainId, transactionNetworkError } from "../../transaction-network-guard";
@@ -81,5 +82,6 @@ export default function AgreementDetailsPage() {
     <header className="detail-header"><div><span className="dash-eyebrow">AGREEMENT DETAIL / {detail.role.toUpperCase()}</span><h1>{detail.chain?.state ?? "Not deployed"}</h1><p className="dash-mono">{detail.chain?.escrowAddress ?? "No escrow address"}</p></div><div className="dash-status">Block {detail.chain?.blockNumber ?? "-"}</div></header>
     {error && <p className="dash-error">{error}</p>}
     <AgreementDetailView detail={detail} transaction={transaction} execute={(action) => void execute(action)} />
+    {detail.chain && <WorkEvidencePanel detail={detail} baseUrl={API} />}
   </main>;
 }

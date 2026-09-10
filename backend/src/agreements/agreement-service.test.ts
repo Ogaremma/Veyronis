@@ -96,6 +96,9 @@ describe("AgreementCreationService", () => {
     expect(deployer.input?.evidencePolicyCommitment).toBe(
       prepared.agreement.evidencePolicyCommitment,
     );
+    expect(deployer.input?.agreementCommitment).toBe(
+      prepared.agreement.agreementCommitment,
+    );
   });
 
   it("records a sanitized failure without fabricating a deployment", async () => {
