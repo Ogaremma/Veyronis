@@ -38,6 +38,20 @@ describe("agreement creation client", () => {
     });
   });
 
+  it("loads authoritative agreement details with the wallet session cookie", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse(200, metadata)));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new HttpAgreementCreationClient("https://backend.example");
+
+    await expect(client.getAgreement(metadata.id)).resolves.toEqual(metadata);
+
+    expect(fetchMock).toHaveBeenCalledWith("https://backend.example/agreements/0x1", {
+      method: "GET",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+    });
+  });
+
   it("surfaces safe backend error messages", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(401, {
       error: "Wallet authentication required",

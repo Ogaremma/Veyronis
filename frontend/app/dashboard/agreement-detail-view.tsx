@@ -4,7 +4,7 @@ import { formatEther, ZeroHash } from "ethers";
 import { AgreementLifecycle } from "./agreement-lifecycle";
 
 const labels: Record<AgreementAction, string> = {
-  deposit: "Deposit", cancel: "Cancel before payment", confirmDelivery: "Confirm delivery",
+  deposit: "Fund Contract", cancel: "Cancel before payment", confirmDelivery: "Confirm delivery",
   requestRefund: "Request refund", approveRefund: "Approve refund", openDispute: "Open dispute",
   resolveRelease: "Resolve for seller", resolveRefund: "Resolve for buyer", withdraw: "Withdraw",
 };
@@ -64,7 +64,7 @@ export function AgreementDetailView({ detail, transaction, execute }: {
 }
 
 function actionLabel(action: AgreementAction, required: string, withdrawal: string) {
-  if (action === "deposit") return `Deposit ${formatEther(required)} ETH`;
+  if (action === "deposit") return `Fund Contract ? ${formatEther(required)} ETH`;
   if (action === "withdraw") return `Withdraw ${formatEther(withdrawal)} ETH`;
   return labels[action];
 }

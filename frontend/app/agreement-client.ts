@@ -1,8 +1,13 @@
-import type { AgreementDraft, AgreementMetadata } from "@veyronis/shared";
+import type {
+  AgreementDetails,
+  AgreementDraft,
+  AgreementMetadata,
+} from "@veyronis/shared";
 
 export interface AgreementCreationClient {
   prepare(draft: AgreementDraft): Promise<AgreementMetadata>;
   confirmAndDeploy(id: string): Promise<AgreementMetadata>;
+  getAgreement(id: string): Promise<AgreementDetails>;
 }
 
 async function agreementRequestErrorMessage(response: Response): Promise<string> {
@@ -44,20 +49,24 @@ export class HttpAgreementCreationClient implements AgreementCreationClient {
   constructor(private readonly baseUrl: string) {}
 
   async prepare(draft: AgreementDraft): Promise<AgreementMetadata> {
-    return this.request("/agreements", {
+    return this.request<AgreementMetadata>("/agreements", {
       method: "POST",
       body: JSON.stringify(draft),
     });
   }
 
   async confirmAndDeploy(id: string): Promise<AgreementMetadata> {
-    return this.request(`/agreements/${id}/confirm`, { method: "POST" });
+    return this.request<AgreementMetadata>(`/agreements/${id}/confirm`, { method: "POST" });
   }
 
-  private async request(
+  async getAgreement(id: string): Promise<AgreementDetails> {
+    return this.request<AgreementDetails>(`/agreements/${id}`, { method: "GET" });
+  }
+
+  private async request<TResult>(
     path: string,
     init: RequestInit,
-  ): Promise<AgreementMetadata> {
+  ): Promise<TResult> {
     let response: Response;
     try {
       response = await fetch(`${this.baseUrl}${path}`, {
@@ -69,6 +78,6 @@ export class HttpAgreementCreationClient implements AgreementCreationClient {
       throw new Error("Unable to reach the agreement service. Check your connection and try again.");
     }
     if (!response.ok) throw new Error(await agreementRequestErrorMessage(response));
-    return response.json() as Promise<AgreementMetadata>;
+    return response.json() as Promise<TResult>;
   }
 }

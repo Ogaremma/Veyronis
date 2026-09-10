@@ -2,7 +2,7 @@ import React, { type ReactNode } from "react";
 
 export type AppSection = "wallet" | "escrow" | "marketplace" | "proofs" | "reputation" | "activity";
 const nav: { id: AppSection; label: string; icon: string }[] = [
-  { id: "wallet", label: "Wallet", icon: "◫" }, { id: "escrow", label: "Escrow", icon: "◇" },
+  { id: "wallet", label: "Wallet", icon: "◫" }, { id: "escrow", label: "Live Contracts", icon: "◇" },
   { id: "marketplace", label: "Marketplace", icon: "▦" }, { id: "proofs", label: "Proofs", icon: "✓" },
   { id: "reputation", label: "Reputation", icon: "◎" }, { id: "activity", label: "Activity", icon: "↗" },
 ];

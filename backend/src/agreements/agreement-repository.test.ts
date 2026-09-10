@@ -57,6 +57,16 @@ describe("agreement repositories", () => {
     ).toBe("DEPLOYED");
   });
 
+  it("lists an agreement for each participant but not an unrelated wallet", async () => {
+    const repository = new InMemoryAgreementRepository();
+    await repository.createAgreement(record);
+
+    expect(await repository.listAgreementsForParticipant(record.buyer)).toHaveLength(1);
+    expect(await repository.listAgreementsForParticipant(record.seller)).toHaveLength(1);
+    expect(await repository.listAgreementsForParticipant(record.arbitrator)).toHaveLength(1);
+    expect(await repository.listAgreementsForParticipant("0x9000000000000000000000000000000000000009")).toEqual([]);
+  });
+
   it("uses placeholders and keeps values outside SQL text", async () => {
     const calls: Array<{ text: string; values: readonly unknown[] }> = [];
     const repository = new SqlAgreementRepository({

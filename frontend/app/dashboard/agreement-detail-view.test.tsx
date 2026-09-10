@@ -22,4 +22,15 @@ describe("agreement operational view", () => {
     expect(html).toContain("ETH available");
     expect(html).toContain("CONFIRMING");
   });
+
+  it("offers funding to a buyer while the escrow awaits payment", () => {
+    const fundable = {
+      ...detail,
+      role: "buyer",
+      actions: ["deposit", "cancel"],
+      chain: { ...detail.chain!, state: "AwaitingPayment" },
+    } as typeof detail;
+    const html = renderToStaticMarkup(<AgreementDetailView detail={fundable} transaction={{ status: "IDLE" }} execute={() => {}} />);
+    expect(html).toContain("Fund Contract");
+  });
 });

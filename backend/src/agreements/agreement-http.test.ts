@@ -6,6 +6,8 @@ import { createAgreementHttpHandler, InMemoryRateLimiter } from "./agreement-htt
 
 const buyer = new Wallet(`0x${"11".repeat(32)}`);
 const wrongWallet = new Wallet(`0x${"22".repeat(32)}`);
+const seller = new Wallet(`0x${"33".repeat(32)}`);
+const arbitrator = new Wallet(`0x${"44".repeat(32)}`);
 const agreementId = id("agreement");
 const draft = {
   buyer: buyer.address,
@@ -49,6 +51,40 @@ async function setup(limit = 20) {
   return { auth, service, url: `http://127.0.0.1:${address.port}` };
 }
 
+async function setupDashboardList() {
+  const auth = new WalletAuthService("a sufficiently long test secret");
+  const stored = {
+    ...draft,
+    id: agreementId,
+    agreementCommitment: id("commitment"),
+    evidencePolicyCommitment: id("policy"),
+    deploymentStatus: "DEPLOYED",
+    escrowAddress: "0x6000000000000000000000000000000000000006",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  const list = vi.fn(async (address: string) => {
+    const participants: Record<string, "buyer" | "seller" | "arbitrator"> = {
+      [buyer.address]: "buyer",
+      [seller.address]: "seller",
+      [arbitrator.address]: "arbitrator",
+    };
+    const role = participants[address];
+    return role ? [{ metadata: stored, role }] : [];
+  });
+  const service = { prepare: vi.fn(), getAgreement: vi.fn(), confirmAndDeploy: vi.fn() };
+  const server = createServer(createAgreementHttpHandler(service as never, {
+    auth,
+    appEnv: "local",
+    dashboard: { list } as never,
+  }));
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Server did not bind");
+  return { auth, list, url: `http://127.0.0.1:${address.port}` };
+}
+
 describe("agreement HTTP authorization", () => {
   it("returns an unauthenticated production health check", async () => {
     const { url } = await setup();
@@ -61,6 +97,48 @@ describe("agreement HTTP authorization", () => {
     const { url } = await setup();
     expect((await fetch(`${url}/agreements`, { method: "POST", body: JSON.stringify(draft) })).status).toBe(401);
     expect((await fetch(`${url}/agreements/${agreementId}/confirm`, { method: "POST" })).status).toBe(401);
+  });
+
+  it("requires authentication for the persistent agreement list", async () => {
+    const { url } = await setupDashboardList();
+    const response = await fetch(`${url}/agreements`);
+    expect(response.status).toBe(401);
+  });
+
+  it("scopes GET /agreements to the authenticated participant", async () => {
+    const { auth, list, url } = await setupDashboardList();
+    const buyerCookie = await sessionCookie(auth, buyer);
+    const sellerCookie = await sessionCookie(auth, seller);
+    const arbitratorCookie = await sessionCookie(auth, arbitrator);
+    const unrelatedCookie = await sessionCookie(auth, wrongWallet);
+
+    const buyerResponse = await fetch(`${url}/agreements`, {
+      headers: { cookie: buyerCookie },
+    });
+    const sellerResponse = await fetch(`${url}/agreements`, {
+      headers: { cookie: sellerCookie },
+    });
+    const arbitratorResponse = await fetch(`${url}/agreements`, {
+      headers: { cookie: arbitratorCookie },
+    });
+    const unrelatedResponse = await fetch(`${url}/agreements`, {
+      headers: { cookie: unrelatedCookie },
+    });
+    const spoofedAddressResponse = await fetch(`${url}/agreements?address=${arbitrator.address}`, {
+      headers: { cookie: buyerCookie },
+    });
+
+    await expect(Promise.all([buyerResponse.json(), sellerResponse.json(), arbitratorResponse.json(), unrelatedResponse.json()])).resolves.toEqual([
+      [{ metadata: expect.objectContaining({ id: agreementId }), role: "buyer" }],
+      [{ metadata: expect.objectContaining({ id: agreementId }), role: "seller" }],
+      [{ metadata: expect.objectContaining({ id: agreementId }), role: "arbitrator" }],
+      [],
+    ]);
+    expect(list).toHaveBeenNthCalledWith(1, buyer.address);
+    expect(list).toHaveBeenNthCalledWith(2, seller.address);
+    expect(list).toHaveBeenNthCalledWith(3, arbitrator.address);
+    expect(list).toHaveBeenNthCalledWith(4, wrongWallet.address);
+    expect(spoofedAddressResponse.status).toBe(404);
   });
 
   it("returns 403 for the wrong authenticated wallet", async () => {
