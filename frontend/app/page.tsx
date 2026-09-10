@@ -12,16 +12,7 @@ import { walletConnectConfigured } from "./web3-config";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL as string;
 
-type RainbowKitConnectorDetails = {
-  id: string;
-  name: string;
-  rdns?: string;
-  isWalletConnectModalConnector?: boolean;
-};
-
-type WalletConnector = ReturnType<typeof useConnectors>[number] & {
-  rkDetails?: RainbowKitConnectorDetails;
-};
+type WalletConnector = ReturnType<typeof useConnectors>[number];
 
 export default function Home() {
   const { address, connector, isConnected } = useAccount();
@@ -36,41 +27,12 @@ export default function Home() {
   const [connectionError, setConnectionError] = useState("");
 
   const walletConnectorOptions = useMemo(() => {
-    const rainbowKitConnectors = connectors.filter(
-      (candidate) => candidate.rkDetails && candidate.rkDetails.id !== "walletConnect",
-    );
-    const walletConnectConnector =
-      connectors.find(
-        (candidate) =>
-          candidate.rkDetails?.id === "walletConnect" &&
-          candidate.rkDetails?.isWalletConnectModalConnector,
-      ) ??
-      connectors.find((candidate) => candidate.rkDetails?.id === "walletConnect");
-    const injectedConnector = connectors.find(
-      (candidate) => !candidate.rkDetails && candidate.id === "injected",
-    );
-    const rainbowKitRdns = new Set(
-      rainbowKitConnectors
-        .map((candidate) => candidate.rkDetails?.rdns)
-        .filter(Boolean),
-    );
-    const discoveredConnectors = connectors.filter(
-      (candidate) =>
-        !candidate.rkDetails &&
-        candidate.id !== "injected" &&
-        !rainbowKitRdns.has(candidate.id),
-    );
-
-    return [
-      ...rainbowKitConnectors,
-      ...discoveredConnectors,
-      ...(walletConnectConnector ? [walletConnectConnector] : []),
-      ...(injectedConnector ? [injectedConnector] : []),
-    ].map((candidate) => ({
-      id: candidate.rkDetails?.id ?? candidate.id,
-      name: candidate.rkDetails?.name ?? candidate.name,
-      type: candidate.type,
-    }));
+    const seen = new Set<string>();
+    return connectors.filter((candidate) => {
+      if (seen.has(candidate.id)) return false;
+      seen.add(candidate.id);
+      return true;
+    }).map((candidate) => ({ id: candidate.id, name: candidate.name, type: candidate.type }));
   }, [connectors]);
 
   useEffect(() => {
@@ -83,19 +45,19 @@ export default function Home() {
   }, [address, authenticatedAddress, connector, isConnected]);
 
   async function connectWallet(connectorId: string) {
-    const nextConnector = connectors.find(
-      (candidate) => (candidate.rkDetails?.id ?? candidate.id) === connectorId,
-    );
+    const nextConnector = connectors.find((candidate) => candidate.id === connectorId);
     if (!nextConnector) return;
     setBusyConnector(connectorId); setConnectionError("");
     try {
-      const result = await connectAsync({ connector: nextConnector });
-      const nextAddress = result.accounts[0];
-      if (!nextAddress) throw new Error("The wallet did not return an account");
-      const provider = await browserProvider(nextConnector);
-      const signer = await provider.getSigner(nextAddress);
-      await authenticate(nextAddress, (message) => signer.signMessage(message));
-      setAuthenticatedAddress(nextAddress);
+      await withTimeout((async () => {
+        const result = await connectAsync({ connector: nextConnector }) as { accounts: readonly `0x${string}`[] };
+        const nextAddress = result.accounts[0];
+        if (!nextAddress) throw new Error("The wallet did not return an account");
+        const provider = await browserProvider(nextConnector);
+        const signer = await provider.getSigner(nextAddress);
+        await authenticate(nextAddress, (message) => signer.signMessage(message));
+        setAuthenticatedAddress(nextAddress);
+      })(), 15000, "Wallet connection timed out");
     } catch (reason) {
       disconnect();
       setConnectionError(reason instanceof Error ? reason.message : "Wallet connection failed");
@@ -135,3 +97,10 @@ export default function Home() {
 }
 
 async function browserProvider(connector: { getProvider(): Promise<unknown> }) { return new BrowserProvider(await connector.getProvider() as never); }
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    promise.then((value) => { window.clearTimeout(timer); resolve(value); }, (error) => { window.clearTimeout(timer); reject(error); });
+  });
+}
