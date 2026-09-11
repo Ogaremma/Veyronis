@@ -108,6 +108,8 @@ describe("escrow funding transaction", () => {
     });
 
     expect(deposit).toHaveBeenCalledWith({ value: 100n });
+    expect(state).not.toHaveBeenCalled();
+    expect(requiredAmount).not.toHaveBeenCalled();
     expect(reconcile).toHaveBeenCalledOnce();
     expect(receipt).toMatchObject({ status: "COMPLETE", hash: "0xabc", blockNumber: "12" });
   });

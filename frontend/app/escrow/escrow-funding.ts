@@ -10,11 +10,7 @@ import {
 } from "../transaction-network-guard";
 import { executeWalletTransaction } from "../transaction-executor";
 
-const escrowFundingAbi = [
-  "function state() view returns (uint8)",
-  "function requiredAmount() view returns (uint256)",
-  "function deposit() payable",
-] as const;
+const escrowFundingAbi = ["function deposit() payable"] as const;
 
 export interface EscrowFundingChecks {
   walletAddress: string | undefined;
@@ -90,16 +86,7 @@ export async function fundEscrow(input: {
     escrowFundingAbi,
     signer,
   );
-  const [state, requiredAmount] = await Promise.all([
-    contract.getFunction("state")(),
-    contract.getFunction("requiredAmount")(),
-  ]);
-  if (Number(state) !== 0) {
-    throw new Error("Funding is unavailable because the escrow is not awaiting payment.");
-  }
-  if (BigInt(requiredAmount) !== BigInt(input.details.chain!.requiredAmount)) {
-    throw new Error("The escrow required amount does not match agreement metadata.");
-  }
+  const requiredAmount = BigInt(input.details.chain!.requiredAmount);
 
   let latestReceipt: TransactionReceiptInfo = { status: "IDLE" };
   await executeWalletTransaction(
