@@ -16,6 +16,10 @@ const config: AppConfig = {
 };
 const coder = AbiCoder.defaultAbiCoder();
 
+function merkleIndex(value: bigint): () => Promise<number> {
+  return (async () => value) as unknown as () => Promise<number>;
+}
+
 async function setup() {
   const wallet = new Wallet(key);
   const recipient = "0x2000000000000000000000000000000000000002";
@@ -35,7 +39,7 @@ async function setup() {
     ({ chainId: 102031n, name: "creditcoin" }) as never;
   service.chainInfo.getSupportedChainByKey = async () => ({ chainKey: 1, chainId: 11155111, chainName: "0x", chainEncoding: 1 });
   service.proofBuilder.getProof = async () => ({ success: true, data: proofData });
-  service.blockProver.computeTransactionIndex = async () => 0;
+  service.blockProver.computeTransactionIndex = merkleIndex(0n);
   service.blockProver.verifySingle = async () => true;
   const policy: EvidencePolicy = {
     version: 1, evidenceType: id("SOURCE_PAYMENT"), sourceChainKey: 1, assetKind: "native",
@@ -73,8 +77,19 @@ describe("AttestcoinService", () => {
   it("decodes the SDK transaction-plus-receipt leaf after verification", async () => {
     const { service, request } = await setup();
     const result = await service.verify(request);
-    expect(result).toMatchObject({ ok: true, transaction: { sourceBlockNumber: 50, transactionIndex: 0, value: "1", receiptStatus: 1 } });
+    expect(result).toMatchObject({ ok: true, transaction: { sourceBlockNumber: 50, transactionIndex: 0n, value: "1", receiptStatus: 1 } });
     if (result.ok) expect(result.transaction.sourceTransactionHash).toBe(request.transactionHash);
+  });
+
+  it("normalizes bigint Merkle indexes against numeric proof metadata", async () => {
+    const { service, request, proofData } = await setup();
+    proofData.txIndex = 104;
+    service.blockProver.computeTransactionIndex = merkleIndex(104n);
+    const result = await service.verify(request);
+    expect(result).toMatchObject({
+      ok: true,
+      transaction: { transactionIndex: 104n },
+    });
   });
 
   it("rejects substituted metadata and malformed encoded contexts", async () => {

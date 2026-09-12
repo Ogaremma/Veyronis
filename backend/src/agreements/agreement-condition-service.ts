@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { ZeroAddress, getAddress } from "ethers";
+import { getAddress } from "ethers";
 import {
   bytes32Schema,
   externalBlockchainConditionFromPolicy,
@@ -8,16 +8,12 @@ import {
   type AgreementMetadata,
   type AttestcoinProofRequest,
   type ParticipantRole,
-  type VerifiedEvidenceClaim,
 } from "@veyronis/shared";
 import {
-  computeClaimId,
   computeEvidenceCommitment,
-  computeSourceEvidenceKey,
 } from "../attestcoin/attestcoin-verifier.js";
 import type {
   CryptographicProofVerifier,
-  EvidenceClaimRegistryGateway,
   EvidencePolicyEvaluator,
 } from "../attestcoin/verifier-types.js";
 import type { AgreementRepository } from "./agreement-repository.js";
@@ -40,7 +36,6 @@ export class AgreementConditionService {
     private readonly verifications: AgreementConditionVerificationRepository,
     private readonly proofVerifier: CryptographicProofVerifier,
     private readonly policyEvaluator: EvidencePolicyEvaluator,
-    private readonly registry: EvidenceClaimRegistryGateway,
   ) {}
 
   async get(
@@ -81,7 +76,7 @@ export class AgreementConditionService {
 
     let transactionHash: string;
     try {
-      transactionHash = bytes32Schema.parse(input);
+      transactionHash = bytes32Schema.parse(input).toLowerCase();
     } catch {
       throw new AgreementConditionServiceError(
         400,
@@ -89,8 +84,17 @@ export class AgreementConditionService {
       );
     }
 
+    const verifiedElsewhere =
+      await this.verifications.findVerifiedTransaction(transactionHash);
+    if (verifiedElsewhere && verifiedElsewhere.agreementId !== agreementId) {
+      throw new AgreementConditionServiceError(
+        409,
+        "This external transaction is already verified for another agreement.",
+      );
+    }
+
     const now = new Date().toISOString();
-    let verification = await this.verifications.createVerification({
+    const started = await this.verifications.startVerification({
       id: randomUUID(),
       agreementId,
       submitter: getAddress(wallet),
@@ -99,11 +103,21 @@ export class AgreementConditionService {
       submittedAt: now,
       updatedAt: now,
     });
+    let verification = started.verification;
+    if (!started.claimed) return verification;
 
     const request = this.proofRequest(agreement, transactionHash);
     const proof = await this.proofVerifier.verify(request);
     if (!proof.ok) {
-      return this.finishFailure(verification, proof.code, proof.message);
+      const retryable =
+        proof.code === "INVALID_PROOF" || proof.code === "PROVIDER_FAILURE";
+      return this.finishFailure(
+        verification,
+        retryable ? "PROOF_UNAVAILABLE" : proof.code,
+        retryable
+          ? "The cross-chain proof is not available yet. Wait for attestation and try again."
+          : proof.message,
+      );
     }
 
     const evaluation = this.policyEvaluator.evaluate(
@@ -118,65 +132,28 @@ export class AgreementConditionService {
       );
     }
 
-    const evidenceCommitment = computeEvidenceCommitment(
-      agreement.evidencePolicyCommitment,
-      evaluation.evidence.evidenceType,
-      proof.transaction.sourceChainKey,
-      proof.transaction.sourceTransactionHash,
-      evaluation.evidence.subject,
-    );
-    const claim: VerifiedEvidenceClaim = {
-      escrow: getAddress(agreement.escrowAddress!),
-      agreementCommitment: agreement.agreementCommitment,
-      evidencePolicyCommitment: agreement.evidencePolicyCommitment,
-      evidenceCommitment,
-      evidenceType: evaluation.evidence.evidenceType,
-      sourceChainKey: proof.transaction.sourceChainKey,
-      sourceTransactionHash: proof.transaction.sourceTransactionHash,
-      subject: getAddress(evaluation.evidence.subject),
-    };
-    const verifiedClaimId = computeClaimId(claim);
-    let registryClaimId: string;
+    const verifiedAt = new Date().toISOString();
+    let updated;
     try {
-      const [claimConsumed, boundEscrow] = await Promise.all([
-        this.registry.isClaimConsumed(verifiedClaimId),
-        this.registry.sourceEvidenceEscrow(computeSourceEvidenceKey(claim)),
-      ]);
-      if (claimConsumed || boundEscrow !== ZeroAddress) {
+      updated = await this.verifications.updateVerification(
+        verification.id,
+        {
+          status: "verified",
+          verifiedAmount: evaluation.evidence.amount,
+          verifiedAt,
+          updatedAt: verifiedAt,
+        },
+      );
+    } catch (error) {
+      if (isUniqueViolation(error)) {
         return this.finishFailure(
           verification,
           "REPLAY_DETECTED",
-          "The external transaction is already bound to another agreement.",
+          "This external transaction is already verified for another agreement.",
         );
       }
-      const submission = await this.registry.submitVerifiedClaim(claim);
-      registryClaimId = submission.claimId;
-    } catch {
-      return this.finishFailure(
-        verification,
-        "REGISTRY_REJECTION",
-        "The EvidenceClaimRegistry rejected the verified condition.",
-      );
+      throw error;
     }
-    if (registryClaimId.toLowerCase() !== verifiedClaimId.toLowerCase()) {
-      return this.finishFailure(
-        verification,
-        "REGISTRY_REJECTION",
-        "The EvidenceClaimRegistry returned another verified claim.",
-      );
-    }
-
-    const verifiedAt = new Date().toISOString();
-    const updated = await this.verifications.updateVerification(
-      verification.id,
-      {
-        status: "verified",
-        verifiedClaimId,
-        verifiedAmount: evaluation.evidence.amount,
-        verifiedAt,
-        updatedAt: verifiedAt,
-      },
-    );
     if (!updated)
       throw new AgreementConditionServiceError(
         409,
@@ -251,6 +228,15 @@ export class AgreementConditionService {
       );
     return agreement;
   }
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "23505"
+  );
 }
 
 function roleFor(

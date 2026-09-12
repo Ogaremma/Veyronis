@@ -21,7 +21,6 @@ import {
 import { createLiveAttestcoinVerifier } from "../attestcoin/live-verifier.js";
 import { AttestcoinService } from "../attestcoin/attestcoin-service.js";
 import { SourceTransactionPolicyEvaluator } from "../attestcoin/source-transaction-interpreter.js";
-import { EthersEvidenceClaimRegistryGateway } from "../attestcoin/ethers-gateways.js";
 
 const config = loadAgreementServerConfig();
 const appConfig = loadConfig();
@@ -58,10 +57,6 @@ const condition = new AgreementConditionService(
   new SqlAgreementConditionVerificationRepository(database),
   new AttestcoinService(appConfig, creditcoinProvider),
   new SourceTransactionPolicyEvaluator(),
-  new EthersEvidenceClaimRegistryGateway(
-    appConfig.VEYRONIS_EVIDENCE_REGISTRY_ADDRESS,
-    new Wallet(appConfig.VEYRONIS_VERIFIER_PRIVATE_KEY, provider),
-  ),
 );
 const attestcoinVerifier = config.APP_ENV === "production"
   ? await createLiveAttestcoinVerifier(appConfig, sepoliaVerifierProvider, creditcoinProvider)

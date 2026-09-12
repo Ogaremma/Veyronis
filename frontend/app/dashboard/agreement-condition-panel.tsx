@@ -78,9 +78,9 @@ export function AgreementConditionPanel({
       <span className="dash-eyebrow">EXTERNAL BLOCKCHAIN CONDITION</span>
       <h2>{condition ? conditionTitle(condition) : "Loading condition..."}</h2>
       <p className="dash-muted">
-        Veyronis verifies the specified blockchain action with Attestcoin on Creditcoin.
-        The external transaction is separate from the escrow funding transaction.
-        Verification does not automatically release escrow funds.
+        {verification?.status === "verified"
+          ? "Verified through Attestcoin. Verification does not automatically release escrow funds."
+          : "Veyronis verifies the specified blockchain action with Attestcoin on Creditcoin. The external transaction is separate from the escrow funding transaction. Verification does not automatically release escrow funds."}
       </p>
       {error && <p className="dash-error" role="alert">{error}</p>}
       {loading && !condition ? (
@@ -122,9 +122,15 @@ export function AgreementConditionPanel({
                 <dd className="dash-mono">{verification.transactionHash}</dd>
               </div>
             )}
+            {verification?.id && (
+              <div>
+                <dt>Verification ID</dt>
+                <dd className="dash-mono">{verification.id}</dd>
+              </div>
+            )}
             {verification?.verifiedClaimId && (
               <div>
-                <dt>Verified claim</dt>
+                <dt>Registry claim</dt>
                 <dd className="dash-mono">{verification.verifiedClaimId}</dd>
               </div>
             )}
@@ -158,7 +164,11 @@ export function AgreementConditionPanel({
                 disabled={verifying || transactionHash.length !== 66}
                 onClick={() => void verify()}
               >
-                {verifying ? "Verifying..." : "Submit transaction hash"}
+                {verifying
+                  ? "Verifying..."
+                  : verification?.failureCode === "PROOF_UNAVAILABLE"
+                    ? "Retry verification"
+                    : "Submit transaction hash"}
               </button>
             </div>
           )}
@@ -181,6 +191,12 @@ export function conditionStatusLabel(
 ) {
   if (verifying) return "Verification in progress";
   if (verification?.status === "verified") return "Verified";
+  if (
+    verification?.status === "verification_failed" &&
+    verification.failureCode === "PROOF_UNAVAILABLE"
+  ) {
+    return "Proof unavailable";
+  }
   if (verification?.status === "verification_failed") return "Verification failed";
   return "Pending";
 }
@@ -193,6 +209,8 @@ export function canSubmitCondition(
 }
 
 export function failureLabel(code: string | undefined) {
+  if (code === "PROOF_UNAVAILABLE")
+    return "The blockchain transaction is confirmed, but the cross-chain proof is not available yet. Wait for attestation and try again.";
   if (code === "SUBJECT_MISMATCH") return "The verified sender did not match the condition.";
   if (code === "WRONG_RECIPIENT" || code === "WRONG_CALLDATA") return "The verified recipient did not match the condition.";
   if (code === "WRONG_ASSET") return "The verified token did not match the condition.";

@@ -64,7 +64,7 @@ export class AttestcoinService implements CryptographicProofVerifier {
       }
 
       const transactionIndex = await this.blockProver.computeTransactionIndex(proof.merkleProof);
-      if (transactionIndex !== proof.txIndex) {
+      if (Number(transactionIndex) !== Number(proof.txIndex)) {
         return failure("INVALID_PROOF", "The Merkle proof transaction index does not match the proof metadata");
       }
 

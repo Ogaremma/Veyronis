@@ -22,13 +22,21 @@ export interface AgreementConditionVerificationUpdate {
   updatedAt: string;
 }
 
+export interface AgreementConditionVerificationStart {
+  verification: AgreementConditionVerification;
+  claimed: boolean;
+}
+
 export interface AgreementConditionVerificationRepository {
-  createVerification(
+  startVerification(
     verification: AgreementConditionVerificationRecord,
-  ): Promise<AgreementConditionVerification>;
+  ): Promise<AgreementConditionVerificationStart>;
   updateVerification(
     id: string,
     update: AgreementConditionVerificationUpdate,
+  ): Promise<AgreementConditionVerification | undefined>;
+  findVerifiedTransaction(
+    transactionHash: string,
   ): Promise<AgreementConditionVerification | undefined>;
   latestVerification(
     agreementId: string,
@@ -40,14 +48,39 @@ export class InMemoryAgreementConditionVerificationRepository
 {
   private readonly verifications = new Map<string, AgreementConditionVerification>();
 
-  async createVerification(
+  async startVerification(
     verification: AgreementConditionVerificationRecord,
-  ): Promise<AgreementConditionVerification> {
-    if (this.verifications.has(verification.id))
-      throw new Error("Condition verification already exists");
+  ): Promise<AgreementConditionVerificationStart> {
+    const existing = this.findVerification(
+      verification.agreementId,
+      verification.transactionHash,
+    );
+    if (existing) {
+      if (
+        existing.status === "verified" ||
+        existing.status === "verification_in_progress"
+      ) {
+        return { verification: structuredClone(existing), claimed: false };
+      }
+      const {
+        verifiedClaimId,
+        verifiedAmount,
+        failureCode,
+        failureMessage,
+        verifiedAt,
+        ...restartable
+      } = existing;
+      const restarted: AgreementConditionVerification = {
+        ...restartable,
+        status: "verification_in_progress",
+        updatedAt: verification.updatedAt,
+      };
+      this.verifications.set(restarted.id, restarted);
+      return { verification: structuredClone(restarted), claimed: true };
+    }
     const stored: AgreementConditionVerification = { ...verification };
     this.verifications.set(verification.id, structuredClone(stored));
-    return structuredClone(stored);
+    return { verification: structuredClone(stored), claimed: true };
   }
 
   async updateVerification(
@@ -59,11 +92,21 @@ export class InMemoryAgreementConditionVerificationRepository
     const updated: AgreementConditionVerification = {
       ...verification,
       status: update.status,
-      ...(update.verifiedClaimId ? { verifiedClaimId: update.verifiedClaimId } : {}),
-      ...(update.verifiedAmount ? { verifiedAmount: update.verifiedAmount } : {}),
-      ...(update.failureCode ? { failureCode: update.failureCode } : {}),
-      ...(update.failureMessage ? { failureMessage: update.failureMessage } : {}),
-      ...(update.verifiedAt ? { verifiedAt: update.verifiedAt } : {}),
+      ...(update.verifiedClaimId !== undefined
+        ? { verifiedClaimId: update.verifiedClaimId }
+        : {}),
+      ...(update.verifiedAmount !== undefined
+        ? { verifiedAmount: update.verifiedAmount }
+        : {}),
+      ...(update.failureCode !== undefined
+        ? { failureCode: update.failureCode }
+        : {}),
+      ...(update.failureMessage !== undefined
+        ? { failureMessage: update.failureMessage }
+        : {}),
+      ...(update.verifiedAt !== undefined
+        ? { verifiedAt: update.verifiedAt }
+        : {}),
       updatedAt: update.updatedAt,
     };
     this.verifications.set(id, updated);
@@ -78,6 +121,30 @@ export class InMemoryAgreementConditionVerificationRepository
       .sort((left, right) => right.submittedAt.localeCompare(left.submittedAt))[0];
     return latest ? structuredClone(latest) : undefined;
   }
+
+  async findVerifiedTransaction(
+    transactionHash: string,
+  ): Promise<AgreementConditionVerification | undefined> {
+    const verified = [...this.verifications.values()].find(
+      (verification) =>
+        verification.status === "verified" &&
+        verification.transactionHash.toLowerCase() ===
+          transactionHash.toLowerCase(),
+    );
+    return verified ? structuredClone(verified) : undefined;
+  }
+
+  private findVerification(
+    agreementId: string,
+    transactionHash: string,
+  ): AgreementConditionVerification | undefined {
+    return [...this.verifications.values()].find(
+      (verification) =>
+        verification.agreementId === agreementId &&
+        verification.transactionHash.toLowerCase() ===
+          transactionHash.toLowerCase(),
+    );
+  }
 }
 
 export class SqlAgreementConditionVerificationRepository
@@ -85,13 +152,23 @@ export class SqlAgreementConditionVerificationRepository
 {
   constructor(private readonly database: ParameterizedQueryExecutor) {}
 
-  async createVerification(
+  async startVerification(
     verification: AgreementConditionVerificationRecord,
-  ): Promise<AgreementConditionVerification> {
+  ): Promise<AgreementConditionVerificationStart> {
     const result = await this.database.query<Record<string, unknown>>(
       `INSERT INTO agreement_condition_verifications
        (id, agreement_id, submitter, transaction_hash, status, submitted_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (agreement_id, transaction_hash)
+       DO UPDATE SET status='verification_in_progress',
+         verified_claim_id=NULL,
+         verified_amount=NULL,
+         failure_code=NULL,
+         failure_message=NULL,
+         verified_at=NULL,
+         updated_at=EXCLUDED.updated_at
+       WHERE agreement_condition_verifications.status IN ('pending', 'verification_failed')
+       RETURNING *`,
       [
         verification.id,
         verification.agreementId,
@@ -102,7 +179,18 @@ export class SqlAgreementConditionVerificationRepository
         verification.updatedAt,
       ],
     );
-    return mapVerificationRow(result.rows[0]!);
+    if (result.rows[0]) {
+      return {
+        verification: mapVerificationRow(result.rows[0]),
+        claimed: true,
+      };
+    }
+    const existing = await this.getVerification(
+      verification.agreementId,
+      verification.transactionHash,
+    );
+    if (!existing) throw new Error("Condition verification could not be started");
+    return { verification: existing, claimed: false };
   }
 
   async updateVerification(
@@ -135,6 +223,29 @@ export class SqlAgreementConditionVerificationRepository
       `SELECT * FROM agreement_condition_verifications
        WHERE agreement_id=$1 ORDER BY submitted_at DESC, id LIMIT 1`,
       [agreementId],
+    );
+    return result.rows[0] ? mapVerificationRow(result.rows[0]) : undefined;
+  }
+
+  async findVerifiedTransaction(
+    transactionHash: string,
+  ): Promise<AgreementConditionVerification | undefined> {
+    const result = await this.database.query<Record<string, unknown>>(
+      `SELECT * FROM agreement_condition_verifications
+       WHERE transaction_hash=$1 AND status='verified' LIMIT 1`,
+      [transactionHash],
+    );
+    return result.rows[0] ? mapVerificationRow(result.rows[0]) : undefined;
+  }
+
+  private async getVerification(
+    agreementId: string,
+    transactionHash: string,
+  ): Promise<AgreementConditionVerification | undefined> {
+    const result = await this.database.query<Record<string, unknown>>(
+      `SELECT * FROM agreement_condition_verifications
+       WHERE agreement_id=$1 AND transaction_hash=$2`,
+      [agreementId, transactionHash],
     );
     return result.rows[0] ? mapVerificationRow(result.rows[0]) : undefined;
   }

@@ -19,13 +19,19 @@ function verification(status: AgreementConditionVerification["status"]) {
 }
 
 describe("agreement condition panel", () => {
-  it("displays pending, in-progress, verified, and failed statuses", () => {
+  it("displays pending, in-progress, verified, retryable, and failed statuses", () => {
     expect(conditionStatusLabel(undefined)).toBe("Pending");
     expect(conditionStatusLabel(verification("pending"))).toBe("Pending");
     expect(
       conditionStatusLabel(verification("verification_in_progress"), true),
     ).toBe("Verification in progress");
     expect(conditionStatusLabel(verification("verified"))).toBe("Verified");
+    expect(
+      conditionStatusLabel({
+        ...verification("verification_failed"),
+        failureCode: "PROOF_UNAVAILABLE",
+      }),
+    ).toBe("Proof unavailable");
     expect(conditionStatusLabel(verification("verification_failed"))).toBe(
       "Verification failed",
     );
@@ -40,6 +46,7 @@ describe("agreement condition panel", () => {
   });
 
   it("maps technical failures to safe user-facing messages", () => {
+    expect(failureLabel("PROOF_UNAVAILABLE")).toContain("Wait for attestation");
     expect(failureLabel("SUBJECT_MISMATCH")).toContain("sender");
     expect(failureLabel("WRONG_RECIPIENT")).toContain("recipient");
     expect(failureLabel("WRONG_ASSET")).toContain("token");

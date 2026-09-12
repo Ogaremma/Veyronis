@@ -9,7 +9,7 @@ export interface VerifiedSourceTransaction {
   sourceChainKey: number;
   sourceTransactionHash: string;
   sourceBlockNumber: number;
-  transactionIndex: number;
+  transactionIndex: number | bigint;
   from: string;
   to: string | null;
   chainId: string;

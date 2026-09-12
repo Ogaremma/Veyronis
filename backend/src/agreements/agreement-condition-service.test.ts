@@ -1,4 +1,4 @@
-import { Interface, ZeroAddress, id, zeroPadValue } from "ethers";
+import { Interface, id, zeroPadValue } from "ethers";
 import { describe, expect, it, vi } from "vitest";
 import type {
   AgreementMetadata,
@@ -8,13 +8,10 @@ import type {
 import {
   computeAgreementCommitment,
   computeEvidencePolicyCommitment,
-  type VerifiedEvidenceClaim,
 } from "@veyronis/shared";
-import { computeClaimId } from "../attestcoin/attestcoin-verifier.js";
 import { SourceTransactionPolicyEvaluator } from "../attestcoin/source-transaction-interpreter.js";
 import type {
   CryptographicProofVerifier,
-  EvidenceClaimRegistryGateway,
   ProofVerificationResult,
   VerifiedSourceTransaction,
 } from "../attestcoin/verifier-types.js";
@@ -81,36 +78,16 @@ const agreement: AgreementMetadata = {
 class FakeProofVerifier implements CryptographicProofVerifier {
   readonly requests: AttestcoinProofRequest[] = [];
 
-  constructor(private readonly transaction: VerifiedSourceTransaction) {}
+  constructor(
+    private readonly transaction: VerifiedSourceTransaction,
+    private readonly failures: ProofVerificationResult[] = [],
+  ) {}
 
   async verify(reference: AttestcoinProofRequest): Promise<ProofVerificationResult> {
     this.requests.push(reference);
+    const failure = this.failures.shift();
+    if (failure) return failure;
     return { ok: true, transaction: this.transaction };
-  }
-}
-
-class FakeRegistry implements EvidenceClaimRegistryGateway {
-  consumed = false;
-  boundEscrow = ZeroAddress;
-  rejection: Error | undefined;
-  returnedClaimId: string | undefined;
-  submitted: VerifiedEvidenceClaim | undefined;
-
-  async isClaimConsumed() {
-    return this.consumed;
-  }
-
-  async sourceEvidenceEscrow() {
-    return this.boundEscrow;
-  }
-
-  async submitVerifiedClaim(claim: VerifiedEvidenceClaim) {
-    if (this.rejection) throw this.rejection;
-    this.submitted = claim;
-    return {
-      claimId: this.returnedClaimId ?? computeClaimId(claim),
-      transactionHash: id("registry transaction"),
-    };
   }
 }
 
@@ -147,19 +124,21 @@ function verifiedTransaction(
   };
 }
 
-async function setup(transaction = verifiedTransaction()) {
+async function setup(
+  transaction = verifiedTransaction(),
+  failures: ProofVerificationResult[] = [],
+  verifications = new InMemoryAgreementConditionVerificationRepository(),
+) {
   const agreements = new InMemoryAgreementRepository();
   await agreements.createAgreement(agreement);
-  const verifier = new FakeProofVerifier(transaction);
-  const registry = new FakeRegistry();
+  const verifier = new FakeProofVerifier(transaction, failures);
   const service = new AgreementConditionService(
     agreements,
-    new InMemoryAgreementConditionVerificationRepository(),
+    verifications,
     verifier,
     new SourceTransactionPolicyEvaluator(),
-    registry,
   );
-  return { agreements, service, verifier, registry };
+  return { agreements, service, verifier, verifications };
 }
 
 function rejection(reason: unknown): AgreementConditionServiceError {
@@ -191,8 +170,8 @@ describe("agreement condition service", () => {
     );
   });
 
-  it("lets only the seller submit and records a verified agreement-bound claim", async () => {
-    const { agreements, service, verifier, registry } = await setup();
+  it("lets only the seller submit and verifies before dispute without a registry claim", async () => {
+    const { agreements, service, verifier } = await setup();
     const updateDeploymentStatus = vi.spyOn(agreements, "updateDeploymentStatus");
     const recordReconciliation = vi.spyOn(agreements, "recordReconciliation");
     const transactionHash = verifiedTransaction().sourceTransactionHash;
@@ -210,9 +189,9 @@ describe("agreement condition service", () => {
       submitter: seller,
       transactionHash,
       status: "verified",
-      verifiedClaimId: expect.any(String),
       verifiedAmount: "100000000",
     });
+    expect(result.verifiedClaimId).toBeUndefined();
     expect(verifier.requests[0]).toMatchObject({
       escrowAddress: escrow,
       agreementCommitment: agreement.agreementCommitment,
@@ -222,16 +201,6 @@ describe("agreement condition service", () => {
       subject: policy.expectedSender,
       policy,
     });
-    expect(registry.submitted).toMatchObject({
-      escrow,
-      agreementCommitment: agreement.agreementCommitment,
-      evidencePolicyCommitment: agreement.evidencePolicyCommitment,
-      sourceTransactionHash: transactionHash,
-      subject: seller,
-    });
-    expect(result.verifiedClaimId).toBe(
-      registry.submitted ? computeClaimId(registry.submitted) : undefined,
-    );
     expect(updateDeploymentStatus).not.toHaveBeenCalled();
     expect(recordReconciliation).not.toHaveBeenCalled();
     expect((await agreements.getAgreementById(agreementId))?.policy).toEqual(policy);
@@ -272,45 +241,92 @@ describe("agreement condition service", () => {
     }
   });
 
-  it("uses registry replay protection and rejects claims bound to another agreement", async () => {
+  it("maps temporary proof failures to a retryable condition state", async () => {
     const transactionHash = verifiedTransaction().sourceTransactionHash;
+    const failure: ProofVerificationResult = {
+      ok: false,
+      code: "INVALID_PROOF",
+      message: "raw provider detail",
+    };
+    const { service, verifier } = await setup(verifiedTransaction(), [failure]);
 
-    const consumed = await setup();
-    consumed.registry.consumed = true;
     await expect(
-      consumed.service.verify(agreementId, seller, transactionHash),
+      service.verify(agreementId, seller, transactionHash),
     ).resolves.toMatchObject({
       status: "verification_failed",
-      failureCode: "REPLAY_DETECTED",
+      failureCode: "PROOF_UNAVAILABLE",
     });
-    expect(consumed.registry.submitted).toBeUndefined();
+    expect(verifier.requests).toHaveLength(1);
 
-    const bound = await setup();
-    bound.registry.boundEscrow = unrelated;
     await expect(
-      bound.service.verify(agreementId, seller, transactionHash),
+      service.verify(agreementId, seller, transactionHash),
     ).resolves.toMatchObject({
-      status: "verification_failed",
-      failureCode: "REPLAY_DETECTED",
+      status: "verified",
+      verifiedAmount: "100000000",
     });
-    expect(bound.registry.submitted).toBeUndefined();
+    expect(verifier.requests).toHaveLength(2);
+  });
 
-    const rejected = await setup();
-    rejected.registry.rejection = new Error("registry rejected");
-    await expect(
-      rejected.service.verify(agreementId, seller, transactionHash),
-    ).resolves.toMatchObject({
-      status: "verification_failed",
-      failureCode: "REGISTRY_REJECTION",
-    });
+  it("keeps successful verification idempotent for the same transaction hash", async () => {
+    const transactionHash = verifiedTransaction().sourceTransactionHash;
+    const { service, verifier } = await setup();
 
-    const mismatched = await setup();
-    mismatched.registry.returnedClaimId = id("other claim");
-    await expect(
-      mismatched.service.verify(agreementId, seller, transactionHash),
-    ).resolves.toMatchObject({
-      status: "verification_failed",
-      failureCode: "REGISTRY_REJECTION",
+    const first = await service.verify(agreementId, seller, transactionHash);
+    const second = await service.verify(agreementId, seller, transactionHash);
+
+    expect(second).toEqual(first);
+    expect(verifier.requests).toHaveLength(1);
+  });
+
+  it("does not duplicate work while another verification attempt is in progress", async () => {
+    const transaction = verifiedTransaction();
+    const verifications = new InMemoryAgreementConditionVerificationRepository();
+    await verifications.startVerification({
+      id: "11111111-1111-4111-8111-111111111111",
+      agreementId,
+      submitter: seller,
+      transactionHash: transaction.sourceTransactionHash,
+      status: "verification_in_progress",
+      submittedAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
     });
+    const { service, verifier } = await setup(transaction, [], verifications);
+
+    await expect(
+      service.verify(agreementId, seller, transaction.sourceTransactionHash),
+    ).resolves.toMatchObject({
+      status: "verification_in_progress",
+    });
+    expect(verifier.requests).toHaveLength(0);
+  });
+
+  it("rejects a transaction already verified for another agreement", async () => {
+    const transaction = verifiedTransaction();
+    const verifications = new InMemoryAgreementConditionVerificationRepository();
+    const otherAgreement = id("other condition agreement");
+    const other = await verifications.startVerification({
+      id: "44444444-4444-4444-8444-444444444444",
+      agreementId: otherAgreement,
+      submitter: seller,
+      transactionHash: transaction.sourceTransactionHash,
+      status: "verification_in_progress",
+      submittedAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    });
+    await verifications.updateVerification(other.verification.id, {
+      status: "verified",
+      verifiedAmount: "100000000",
+      verifiedAt: new Date(1).toISOString(),
+      updatedAt: new Date(1).toISOString(),
+    });
+    const { service, verifier } = await setup(transaction, [], verifications);
+    const uppercaseHash = `0x${transaction.sourceTransactionHash
+      .slice(2)
+      .toUpperCase()}`;
+
+    await expect(
+      service.verify(agreementId, seller, uppercaseHash),
+    ).rejects.toSatisfy((reason: unknown) => rejection(reason).status === 409);
+    expect(verifier.requests).toHaveLength(0);
   });
 });
