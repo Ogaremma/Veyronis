@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { Wallet, ZeroAddress, id } from "ethers";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { AgreementDiscoveryItem } from "@veyronis/shared";
 import { WalletAuthService } from "../auth/wallet-auth.js";
 import { AgreementConditionServiceError } from "./agreement-condition-service.js";
 import { createAgreementHttpHandler, InMemoryRateLimiter } from "./agreement-http.js";
@@ -73,17 +74,77 @@ async function setupDashboardList() {
     const role = participants[address];
     return role ? [{ metadata: stored, role }] : [];
   });
+  const details = vi.fn(async (id: string, address: string) => {
+    if (id !== agreementId) throw new Error("Agreement not found");
+    if (address === wrongWallet.address) throw new Error("Not an agreement participant");
+    const participants: Record<string, "buyer" | "seller" | "arbitrator"> = {
+      [buyer.address]: "buyer",
+      [seller.address]: "seller",
+      [arbitrator.address]: "arbitrator",
+    };
+    const role = participants[address];
+    if (!role) throw new Error("Not an agreement participant");
+    return { metadata: stored, role, timeline: [], actions: [] };
+  });
   const service = { prepare: vi.fn(), getAgreement: vi.fn(), confirmAndDeploy: vi.fn() };
   const server = createServer(createAgreementHttpHandler(service as never, {
     auth,
     appEnv: "local",
-    dashboard: { list } as never,
+    dashboard: { list, details } as never,
   }));
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Server did not bind");
-  return { auth, list, url: `http://127.0.0.1:${address.port}` };
+  return { auth, details, list, url: `http://127.0.0.1:${address.port}` };
+}
+
+async function setupDiscovery() {
+  const auth = new WalletAuthService("a sufficiently long test secret");
+  const items: AgreementDiscoveryItem[] = [
+    {
+      id: agreementId,
+      escrowAddress: "0x6000000000000000000000000000000000000006",
+      buyer: buyer.address,
+      seller: seller.address,
+      arbitrator: arbitrator.address,
+      network: "sepolia",
+      requiredAmount: "100",
+      state: "AwaitingDelivery",
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+      status: "live",
+    },
+    {
+      id: id("closed"),
+      escrowAddress: "0x7000000000000000000000000000000000000007",
+      buyer: buyer.address,
+      seller: seller.address,
+      arbitrator: arbitrator.address,
+      network: "sepolia",
+      requiredAmount: "100",
+      state: "Complete",
+      createdAt: new Date(1).toISOString(),
+      updatedAt: new Date(1).toISOString(),
+      status: "closed",
+    },
+  ];
+  const listDiscovery = vi.fn(async () => items);
+  const service = {
+    prepare: vi.fn(),
+    getAgreement: vi.fn(),
+    confirmAndDeploy: vi.fn(),
+  };
+  const server = createServer(createAgreementHttpHandler(service as never, {
+    auth,
+    appEnv: "local",
+    dashboard: { listDiscovery } as never,
+  }));
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Server did not bind");
+  return { auth, items, listDiscovery, url: `http://127.0.0.1:${address.port}` };
 }
 
 async function setupCondition() {
@@ -155,6 +216,68 @@ describe("agreement HTTP authorization", () => {
     const { url } = await setupDashboardList();
     const response = await fetch(`${url}/agreements`);
     expect(response.status).toBe(401);
+  });
+
+  it("returns the public discovery list to unauthenticated visitors", async () => {
+    const { items, listDiscovery, url } = await setupDiscovery();
+    const response = await fetch(`${url}/agreements/discovery`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(items);
+    expect(listDiscovery).toHaveBeenCalledOnce();
+  });
+
+  it("returns the same public discovery list for participant and non-participant wallets", async () => {
+    const { auth, items, url } = await setupDiscovery();
+    const cookies = await Promise.all([
+      sessionCookie(auth, buyer),
+      sessionCookie(auth, seller),
+      sessionCookie(auth, arbitrator),
+      sessionCookie(auth, wrongWallet),
+    ]);
+
+    const responses = await Promise.all(
+      cookies.map((cookie) =>
+        fetch(`${url}/agreements/discovery`, { headers: { cookie } }),
+      ),
+    );
+
+    expect(responses.map((response) => response.status)).toEqual([200, 200, 200, 200]);
+    await expect(Promise.all(responses.map((response) => response.json()))).resolves.toEqual([
+      items,
+      items,
+      items,
+      items,
+    ]);
+  });
+
+  it("does not expose private agreement data in public discovery", async () => {
+    const { url } = await setupDiscovery();
+    const response = await fetch(`${url}/agreements/discovery`);
+    const body = await response.text();
+
+    for (const forbidden of ["policy", "deliverables", "evidence", "chat", "timeline", "actions", "session"]) {
+      expect(body).not.toContain(`"${forbidden}"`);
+    }
+  });
+
+  it("keeps participant-only agreement details authorization-protected", async () => {
+    const { auth, url } = await setupDashboardList();
+    const buyerCookie = await sessionCookie(auth, buyer);
+    const sellerCookie = await sessionCookie(auth, seller);
+    const arbitratorCookie = await sessionCookie(auth, arbitrator);
+    const unrelatedCookie = await sessionCookie(auth, wrongWallet);
+
+    expect((await fetch(`${url}/agreements/${agreementId}`)).status).toBe(401);
+
+    const responses = await Promise.all(
+      [buyerCookie, sellerCookie, arbitratorCookie, unrelatedCookie].map((cookie) =>
+        fetch(`${url}/agreements/${agreementId}`, { headers: { cookie } }),
+      ),
+    );
+
+    expect(responses.slice(0, 3).map((response) => response.status)).toEqual([200, 200, 200]);
+    expect(responses[3]!.status).not.toBe(200);
   });
 
   it("scopes GET /agreements to the authenticated participant", async () => {

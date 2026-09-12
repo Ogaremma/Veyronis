@@ -97,6 +97,27 @@ describe("agreement repositories", () => {
     expect(await repository.listAgreementsForParticipant("0x9000000000000000000000000000000000000009")).toEqual([]);
   });
 
+  it("lists only deployed agreements with an escrow address", async () => {
+    const repository = new InMemoryAgreementRepository();
+    await repository.createAgreement(record);
+    await repository.updateDeploymentStatus(record.id, {
+      status: "DEPLOYED",
+      escrowAddress: record.evidenceRegistry,
+    });
+
+    const pending: AgreementMetadata = {
+      ...record,
+      id: id("pending"),
+      deploymentStatus: "AWAITING_CONFIRMATION",
+    };
+    await repository.createAgreement(pending);
+
+    const deployed = await repository.listDeployedAgreements();
+    expect(deployed).toHaveLength(1);
+    expect(deployed[0]?.id).toBe(record.id);
+    expect(deployed[0]?.escrowAddress).toBe(record.evidenceRegistry);
+  });
+
   it("keeps immutable work evidence terms when deployment status changes", async () => {
     const repository = new InMemoryAgreementRepository();
     await repository.createAgreement(record);

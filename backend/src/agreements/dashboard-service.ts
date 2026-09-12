@@ -1,10 +1,12 @@
 import { getAddress } from "ethers";
 import type {
+  AgreementDiscoveryItem,
   AgreementAction,
   AgreementDetails,
   AgreementMetadata,
   ParticipantRole,
 } from "@veyronis/shared";
+import { isTerminalEscrowState } from "@veyronis/shared";
 import type { AgreementRepository } from "./agreement-repository.js";
 import type { AgreementContractReader } from "./contract-read-layer.js";
 import { AgreementReconciliationService } from "./reconciliation-service.js";
@@ -14,9 +16,38 @@ export class AgreementDashboardService {
   constructor(
     private readonly repository: AgreementRepository,
     private readonly reader: AgreementContractReader,
+    private readonly network = "sepolia",
   ) {
     this.reconciliation = new AgreementReconciliationService(reader);
   }
+
+  async listDiscovery(): Promise<AgreementDiscoveryItem[]> {
+    const agreements = await this.repository.listDeployedAgreements();
+    return Promise.all(
+      agreements.map(async (metadata) => {
+        if (!metadata.escrowAddress)
+          throw new Error("Agreement is not deployed");
+        const { snapshot } = await this.reconciliation.reconcile(
+          metadata,
+          metadata.buyer,
+        );
+        return {
+          id: metadata.id,
+          escrowAddress: metadata.escrowAddress,
+          buyer: metadata.buyer,
+          seller: metadata.seller,
+          arbitrator: metadata.arbitrator,
+          network: this.network,
+          requiredAmount: metadata.requiredAmount,
+          state: snapshot.state,
+          createdAt: metadata.createdAt,
+          updatedAt: metadata.updatedAt,
+          status: isTerminalEscrowState(snapshot.state) ? "closed" : "live",
+        };
+      }),
+    );
+  }
+
   async list(addressInput: string) {
     const address = getAddress(addressInput);
     const agreements =

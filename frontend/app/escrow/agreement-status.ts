@@ -1,4 +1,9 @@
-import type { AgreementDashboardItem, ParticipantRole } from "@veyronis/shared";
+import {
+  isTerminalEscrowState,
+  type AgreementDashboardItem,
+  type AgreementDiscoveryItem,
+  type ParticipantRole,
+} from "@veyronis/shared";
 
 const closedStates = new Set(["Complete", "Refunded", "Cancelled"]);
 
@@ -30,4 +35,48 @@ export function roleLabel(role: ParticipantRole): string {
 
 export function shortAddress(address: string): string {
   return `${address.slice(0, 8)}...${address.slice(-6)}`;
+}
+
+export function roleForDiscoveryAgreement(
+  item: AgreementDiscoveryItem,
+  walletAddress: string | undefined,
+): ParticipantRole | undefined {
+  if (!walletAddress) return undefined;
+  const normalized = walletAddress.toLowerCase();
+  if (item.buyer.toLowerCase() === normalized) return "buyer";
+  if (item.seller.toLowerCase() === normalized) return "seller";
+  if (item.arbitrator.toLowerCase() === normalized) return "arbitrator";
+  return undefined;
+}
+
+export function isClosedDiscoveryAgreement(
+  item: AgreementDiscoveryItem,
+): boolean {
+  return isTerminalEscrowState(item.state);
+}
+
+export function discoveryDisplayStatus(item: AgreementDiscoveryItem): string {
+  return item.state;
+}
+
+export function discoveryCounterparty(
+  item: AgreementDiscoveryItem,
+  role: ParticipantRole | undefined,
+): string {
+  if (role === "buyer") return shortAddress(item.seller);
+  if (role === "seller") return shortAddress(item.buyer);
+  return `${shortAddress(item.buyer)} / ${shortAddress(item.seller)}`;
+}
+
+export function discoveryAction(
+  item: AgreementDiscoveryItem,
+  role: ParticipantRole | undefined,
+): string {
+  if (!role) return "Read only";
+  if (role === "buyer" && item.state === "AwaitingPayment")
+    return "Fund Contract";
+  if (role === "arbitrator" && item.state === "Disputed")
+    return "Review Dispute";
+  if (isClosedDiscoveryAgreement(item)) return "View History";
+  return "Open Contract";
 }

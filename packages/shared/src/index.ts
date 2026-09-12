@@ -260,6 +260,14 @@ export const escrowStateSchema = z.enum([
 ]);
 export type EscrowState = z.infer<typeof escrowStateSchema>;
 
+export const terminalEscrowStates = new Set<EscrowState>([
+  "Complete",
+  "Refunded",
+  "Cancelled",
+]);
+export const isTerminalEscrowState = (state: EscrowState): boolean =>
+  terminalEscrowStates.has(state);
+
 export const participantRoleSchema = z.enum(["buyer", "seller", "arbitrator"]);
 export type ParticipantRole = z.infer<typeof participantRoleSchema>;
 
@@ -363,6 +371,20 @@ export interface AgreementChainSnapshot {
   verifiedClaimId: string;
   withdrawalAmount: string;
   blockNumber: string;
+}
+
+export interface AgreementDiscoveryItem {
+  id: string;
+  escrowAddress: string;
+  buyer: string;
+  seller: string;
+  arbitrator: string;
+  network: string;
+  requiredAmount: string;
+  state: EscrowState;
+  createdAt: string;
+  updatedAt: string;
+  status: "live" | "closed";
 }
 
 export type TransactionStatus =

@@ -2,10 +2,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import { ZeroAddress, formatEther, hexlify, id, parseEther, parseUnits, randomBytes } from "ethers";
-import { computeAgreementCommitment, computeEvidencePolicyCommitment, validateAgreementDraft, type AgreementDashboardItem, type AgreementDeliverable, type AgreementDraft } from "@veyronis/shared";
+import { computeAgreementCommitment, computeEvidencePolicyCommitment, validateAgreementDraft, type AgreementDeliverable, type AgreementDiscoveryItem, type AgreementDraft } from "@veyronis/shared";
 import { HttpAgreementCreationClient } from "../agreement-client";
 import { requiredTransactionChainId, transactionNetworkError } from "../transaction-network-guard";
-import { agreementAction, agreementCounterparty, agreementDisplayStatus, isClosedAgreement, roleLabel } from "./agreement-status";
+import {
+  discoveryAction,
+  discoveryCounterparty,
+  discoveryDisplayStatus,
+  isClosedDiscoveryAgreement,
+  roleForDiscoveryAgreement,
+  roleLabel,
+} from "./agreement-status";
 import { deployAndFundAgreement, type DeployAndFundResult, type DeployAndFundStage } from "./deploy-and-fund-flow";
 import { fundEscrow } from "./escrow-funding";
 import { DeliverablesEditor, EvidenceRequirementsEditor } from "./agreement-terms-editor";
@@ -14,7 +21,7 @@ import { GlassButton, GlassCard, GlassInput, SectionHeader, StatusBadge } from "
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL as string;
 const REGISTRY = (process.env.NEXT_PUBLIC_EVIDENCE_REGISTRY_ADDRESS ?? process.env.NEXT_PUBLIC_VEYRONIS_EVIDENCE_REGISTRY_ADDRESS) as string;
-type AgreementItem = AgreementDashboardItem;
+type AgreementItem = AgreementDiscoveryItem;
 type WalletConnector = { getProvider(): Promise<unknown> } | undefined;
 type ConditionMode = "work" | "external" | "both";
 
@@ -48,35 +55,36 @@ export function EscrowModule({ walletAddress, networkName }: { walletAddress: st
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const response = await fetch(`${API}/agreements`, { credentials: "include", cache: "no-store" });
-      if (!response.ok) throw new Error("Unable to load agreements");
+      const response = await fetch(`${API}/agreements/discovery`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`Unable to load live contracts (HTTP ${response.status}).`);
       setItems(await response.json());
-    } catch {
-      setError("Unable to load live contracts. Sign in with a participant wallet and try again.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to load live contracts because the request failed.");
     } finally { setLoading(false); }
   }, []);
-  useEffect(() => { void load(); }, [load, walletAddress]);
-  const liveItems = items.filter(item => !isClosedAgreement(item));
-  const closedItems = items.filter(isClosedAgreement);
-  const awaitingPayment = liveItems.filter(item => agreementDisplayStatus(item) === "AwaitingPayment").length;
-  const awaitingDelivery = liveItems.filter(item => agreementDisplayStatus(item) === "AwaitingDelivery").length;
-  const disputed = liveItems.filter(item => agreementDisplayStatus(item) === "Disputed").length;
+  useEffect(() => { void load(); }, [load]);
+  const liveItems = items.filter(item => !isClosedDiscoveryAgreement(item));
+  const closedItems = items.filter(isClosedDiscoveryAgreement);
+  const awaitingPayment = liveItems.filter(item => discoveryDisplayStatus(item) === "AwaitingPayment").length;
+  const awaitingDelivery = liveItems.filter(item => discoveryDisplayStatus(item) === "AwaitingDelivery").length;
+  const disputed = liveItems.filter(item => discoveryDisplayStatus(item) === "Disputed").length;
   if (creating) return <EscrowWizard walletAddress={walletAddress} networkName={networkName} chainId={chainId} connector={connector as WalletConnector} close={() => { setCreating(false); void load(); }} />;
   return <div className="module-page"><SectionHeader eyebrow="PERSISTENT AGREEMENTS" title="Live Contracts" action={<GlassButton className="primary-button" onClick={() => setCreating(true)}>+ Create Escrow</GlassButton>} />
     <div className="metric-grid"><Metric label="Live contracts" value={liveItems.length} /><Metric label="Awaiting payment" value={awaitingPayment} /><Metric label="Awaiting delivery" value={awaitingDelivery} /><Metric label="Closed" value={closedItems.length} /><Metric label="Disputed" value={disputed} tone="amber" /></div>
-    <GlassCard className="agreement-table"><div className="table-title"><div><h2>Live Contracts</h2><p>Agreements persist for buyers, sellers, and arbitrators. Contract state remains authoritative.</p></div><StatusBadge>{liveItems.length} live</StatusBadge></div>{loading ? <div className="empty-agreements"><span className="escrow-icon">{"\u25c7"}</span><h3>Loading live contracts...</h3></div> : error ? <p className="form-error" role="alert">{error}</p> : liveItems.length ? liveItems.map(item => <AgreementCard item={item} key={item.metadata.id} />) : <div className="empty-agreements"><span className="escrow-icon">{"\u25c7"}</span><h3>No live contracts</h3><p>Agreements remain here after disconnect and reconnect for every authenticated participant.</p><GlassButton onClick={() => setCreating(true)}>Create Escrow</GlassButton></div>}</GlassCard>
-    <GlassCard className="agreement-table closed-contracts"><div className="table-title"><div><h2>Closed / Completed Contracts</h2><p>Historical agreements are retained for audit and review.</p></div><StatusBadge tone="green">{closedItems.length} closed</StatusBadge></div>{!loading && !error && closedItems.length ? closedItems.map(item => <AgreementCard item={item} key={item.metadata.id} />) : <div className="empty-agreements"><span className="escrow-icon">{"\u25c7"}</span><h3>No closed contracts</h3><p>Completed, refunded, and cancelled agreements will appear here.</p></div>}</GlassCard>
+    <GlassCard className="agreement-table"><div className="table-title"><div><h2>Live Contracts</h2><p>Deployed agreements are publicly discoverable. Actions require the matching participant wallet.</p></div><StatusBadge>{liveItems.length} live</StatusBadge></div>{loading ? <div className="empty-agreements"><span className="escrow-icon">{"\u25c7"}</span><h3>Loading live contracts...</h3></div> : error ? <p className="form-error" role="alert">{error}</p> : liveItems.length ? liveItems.map(item => <AgreementCard item={item} walletAddress={walletAddress} key={item.id} />) : <div className="empty-agreements"><span className="escrow-icon">{"\u25c7"}</span><h3>No live contracts</h3><p>Deployed agreements are visible to everyone; role actions require the matching wallet.</p><GlassButton onClick={() => setCreating(true)}>Create Escrow</GlassButton></div>}</GlassCard>
+    <GlassCard className="agreement-table closed-contracts"><div className="table-title"><div><h2>Closed / Completed Contracts</h2><p>Historical agreements are retained for audit and review.</p></div><StatusBadge tone="green">{closedItems.length} closed</StatusBadge></div>{!loading && !error && closedItems.length ? closedItems.map(item => <AgreementCard item={item} walletAddress={walletAddress} key={item.id} />) : <div className="empty-agreements"><span className="escrow-icon">{"\u25c7"}</span><h3>No closed contracts</h3><p>Completed, refunded, and cancelled agreements will appear here.</p></div>}</GlassCard>
   </div>;
 }
 function Metric({ label, value, tone }: { label: string; value: number; tone?: "amber" }) { return <GlassCard className="metric"><span>{label}</span><strong>{value}</strong>{tone && <i />}</GlassCard>; }
 function formatAmount(value: string) { try { return formatEther(value); } catch { return value; } }
 
-function AgreementCard({ item }: { item: AgreementItem }) {
-  return <a className="agreement-item" href={`/dashboard/${item.metadata.id}`}>
+function AgreementCard({ item, walletAddress }: { item: AgreementItem; walletAddress: string }) {
+  const role = roleForDiscoveryAgreement(item, walletAddress);
+  return <a className="agreement-item" href={`/dashboard/${item.id}`}>
     <span className="escrow-icon">{"\u25c7"}</span>
-    <div><strong>{item.metadata.escrowAddress ? `${item.metadata.escrowAddress.slice(0, 12)}...${item.metadata.escrowAddress.slice(-6)}` : "Agreement awaiting deployment"}</strong><small>{roleLabel(item.role)} · {agreementCounterparty(item)} · {formatAmount(item.metadata.requiredAmount)} ETH</small></div>
-    <StatusBadge tone={agreementDisplayStatus(item) === "Disputed" ? "amber" : isClosedAgreement(item) ? "green" : "blue"}>{agreementDisplayStatus(item)}</StatusBadge>
-    <span className="agreement-action">{agreementAction(item)}</span>
+    <div><strong>{item.escrowAddress.slice(0, 12)}...{item.escrowAddress.slice(-6)}</strong><small>{item.network} · {role ? roleLabel(role) : "Read only"} · {discoveryCounterparty(item, role)} · {formatAmount(item.requiredAmount)} ETH</small></div>
+    <StatusBadge tone={discoveryDisplayStatus(item) === "Disputed" ? "amber" : isClosedDiscoveryAgreement(item) ? "green" : "blue"}>{discoveryDisplayStatus(item)}</StatusBadge>
+    <span className="agreement-action">{discoveryAction(item, role)}</span>
   </a>;
 }
 

@@ -21,6 +21,7 @@ export interface AgreementRepository {
     },
   ): Promise<void>;
   listAgreementsForParticipant(address: string): Promise<AgreementMetadata[]>;
+  listDeployedAgreements(): Promise<AgreementMetadata[]>;
   recordReconciliation(record: {
     agreementId: string;
     status: "MATCHED" | "METADATA_STALE";
@@ -81,6 +82,16 @@ export class InMemoryAgreementRepository implements AgreementRepository {
         [agreement.buyer, agreement.seller, agreement.arbitrator].some(
           (participant) => participant.toLowerCase() === normalized,
         ),
+      )
+      .map((agreement) => structuredClone(agreement));
+  }
+
+  async listDeployedAgreements(): Promise<AgreementMetadata[]> {
+    return [...this.agreements.values()]
+      .filter(
+        (agreement) =>
+          agreement.deploymentStatus === "DEPLOYED" &&
+          agreement.escrowAddress !== undefined,
       )
       .map((agreement) => structuredClone(agreement));
   }
@@ -224,6 +235,20 @@ export class SqlAgreementRepository implements AgreementRepository {
       `SELECT * FROM agreements WHERE LOWER(buyer)=LOWER($1) OR LOWER(seller)=LOWER($1)
        OR LOWER(arbitrator)=LOWER($1) ORDER BY created_at DESC`,
       [address],
+    );
+    const agreements: AgreementMetadata[] = [];
+    for (const row of result.rows) {
+      agreements.push(await this.withDeliverables(mapRow(row)));
+    }
+    return agreements;
+  }
+
+  async listDeployedAgreements(): Promise<AgreementMetadata[]> {
+    const result = await this.database.query<Record<string, unknown>>(
+      `SELECT * FROM agreements
+       WHERE deployment_status = 'DEPLOYED' AND escrow_address IS NOT NULL
+       ORDER BY created_at DESC`,
+      [],
     );
     const agreements: AgreementMetadata[] = [];
     for (const row of result.rows) {

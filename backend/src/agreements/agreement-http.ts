@@ -82,6 +82,14 @@ export function createAgreementHttpHandler(
       if (
         options?.dashboard &&
         request.method === "GET" &&
+        request.url === "/agreements/discovery"
+      ) {
+        sendJson(response, 200, await options.dashboard.listDiscovery());
+        return;
+      }
+      if (
+        options?.dashboard &&
+        request.method === "GET" &&
         (request.url === "/agreements" ||
           request.url?.startsWith("/agreements/"))
       ) {

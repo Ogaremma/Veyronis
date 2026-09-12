@@ -35,6 +35,7 @@ const artifact = JSON.parse(await readFile(artifactPath, "utf8")) as {
 const provider = new JsonRpcProvider(config.DEPLOYER_RPC_URL);
 const sepoliaVerifierProvider = new JsonRpcProvider(config.DEPLOYER_RPC_URL);
 const creditcoinProvider = new JsonRpcProvider(appConfig.CREDITCOIN_RPC_URL);
+const network = await provider.getNetwork();
 const deployer = new EthersEscrowDeployer(
   new Wallet(config.DEPLOYER_PRIVATE_KEY, provider),
   artifact.abi as InterfaceAbi,
@@ -47,6 +48,7 @@ const auth = new WalletAuthService(config.SESSION_SECRET!);
 const dashboard = new AgreementDashboardService(
   agreementRepository,
   new EthersAgreementContractReader(provider),
+  network.name === "unknown" ? "sepolia" : network.name,
 );
 const workEvidence = new WorkEvidenceService(
   agreementRepository,

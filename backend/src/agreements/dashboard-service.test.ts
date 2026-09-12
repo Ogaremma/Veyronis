@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { ZeroAddress, id } from "ethers";
-import type { AgreementChainSnapshot, AgreementMetadata } from "@veyronis/shared";
+import type {
+  AgreementChainSnapshot,
+  AgreementDiscoveryItem,
+  AgreementMetadata,
+} from "@veyronis/shared";
 import { InMemoryAgreementRepository } from "./agreement-repository.js";
 import { actionsFor } from "./dashboard-service.js";
 import { AgreementDashboardService } from "./dashboard-service.js";
@@ -52,6 +56,19 @@ const snapshot: AgreementChainSnapshot = {
   withdrawalAmount: "0",
   blockNumber: "10",
 };
+
+const closedEscrowAddress = "0x6000000000000000000000000000000000000006";
+const closedMetadata: AgreementMetadata = {
+  ...metadata,
+  id: id("closed-agreement"),
+  escrowAddress: closedEscrowAddress,
+};
+
+const closedSnapshot: AgreementChainSnapshot = {
+  ...snapshot,
+  escrowAddress: closedEscrowAddress,
+  state: "Complete",
+};
 describe("participant-specific agreement actions", () => {
   it("only exposes actions permitted by role and authoritative chain state", () => {
     expect(actionsFor("buyer", "AwaitingPayment", 0n)).toEqual([
@@ -96,5 +113,63 @@ describe("participant-specific agreement actions", () => {
     });
 
     await expect(service.list("0x9000000000000000000000000000000000000009")).resolves.toEqual([]);
+  });
+
+  it("returns a public, safe, and authoritative discovery list", async () => {
+    const repository = new InMemoryAgreementRepository();
+    await repository.createAgreement(metadata);
+    await repository.createAgreement(closedMetadata);
+    const reader = {
+      read: vi.fn(async (address: string) => ({
+        snapshot:
+          address === closedMetadata.escrowAddress ? closedSnapshot : snapshot,
+        timeline: [],
+      })),
+    };
+    const service = new AgreementDashboardService(repository, reader, "sepolia");
+
+    const items = await service.listDiscovery();
+
+    expect(items).toEqual<AgreementDiscoveryItem[]>([
+      {
+        id: metadata.id,
+        escrowAddress: metadata.escrowAddress!,
+        buyer: metadata.buyer,
+        seller: metadata.seller,
+        arbitrator: metadata.arbitrator,
+        network: "sepolia",
+        requiredAmount: metadata.requiredAmount,
+        state: "AwaitingPayment",
+        createdAt: metadata.createdAt,
+        updatedAt: metadata.updatedAt,
+        status: "live",
+      },
+      {
+        id: closedMetadata.id,
+        escrowAddress: closedMetadata.escrowAddress!,
+        buyer: closedMetadata.buyer,
+        seller: closedMetadata.seller,
+        arbitrator: closedMetadata.arbitrator,
+        network: "sepolia",
+        requiredAmount: closedMetadata.requiredAmount,
+        state: "Complete",
+        createdAt: closedMetadata.createdAt,
+        updatedAt: closedMetadata.updatedAt,
+        status: "closed",
+      },
+    ]);
+    expect(Object.keys(items[0]!).sort()).toEqual([
+      "arbitrator",
+      "buyer",
+      "createdAt",
+      "escrowAddress",
+      "id",
+      "network",
+      "requiredAmount",
+      "seller",
+      "state",
+      "status",
+      "updatedAt",
+    ]);
   });
 });
