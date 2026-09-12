@@ -27,8 +27,8 @@ export class AgreementDashboardService {
       agreements.map(async (metadata) => {
         if (!metadata.escrowAddress)
           throw new Error("Agreement is not deployed");
-        const { snapshot } = await this.reconciliation.reconcile(
-          metadata,
+        const snapshot = await this.reader.readSnapshot(
+          metadata.escrowAddress,
           metadata.buyer,
         );
         return {

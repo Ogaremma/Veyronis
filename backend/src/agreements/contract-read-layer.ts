@@ -50,6 +50,10 @@ const states = [
 ] as const;
 
 export interface AgreementContractReader {
+  readSnapshot(
+    address: string,
+    participant: string,
+  ): Promise<AgreementChainSnapshot>;
   read(
     address: string,
     participant: string,
@@ -64,6 +68,53 @@ export class EthersAgreementContractReader implements AgreementContractReader {
   private readonly iface = new Interface(escrowAbi);
   private readonly registryInterface = new Interface(registryAbi);
   constructor(private readonly provider: Provider) {}
+  async readSnapshot(addressInput: string, participant: string) {
+    const address = getAddress(addressInput);
+    const contract = new Contract(address, escrowAbi, this.provider);
+    const blockNumber = await this.provider.getBlockNumber();
+    const [
+      buyer,
+      seller,
+      arbitrator,
+      requiredAmount,
+      agreementCommitment,
+      evidencePolicyCommitment,
+      evidenceRegistry,
+      state,
+      deposited,
+      evidence,
+      claim,
+      withdrawal,
+    ] = await Promise.all([
+      contract.getFunction("buyer")(),
+      contract.getFunction("seller")(),
+      contract.getFunction("arbitrator")(),
+      contract.getFunction("requiredAmount")(),
+      contract.getFunction("agreementCommitment")(),
+      contract.getFunction("evidencePolicyCommitment")(),
+      contract.getFunction("evidenceRegistry")(),
+      contract.getFunction("state")(),
+      contract.getFunction("depositedAmount")(),
+      contract.getFunction("activeEvidenceCommitment")(),
+      contract.getFunction("verifiedClaimId")(),
+      contract.getFunction("withdrawals")(participant),
+    ]);
+    return {
+      escrowAddress: address,
+      buyer: String(buyer),
+      seller: String(seller),
+      arbitrator: String(arbitrator),
+      requiredAmount: String(requiredAmount),
+      agreementCommitment: String(agreementCommitment),
+      evidencePolicyCommitment: String(evidencePolicyCommitment),
+      state: states[Number(state)]!,
+      depositedAmount: String(deposited),
+      activeEvidenceCommitment: String(evidence),
+      verifiedClaimId: String(claim),
+      withdrawalAmount: String(withdrawal),
+      blockNumber: String(blockNumber),
+    };
+  }
   async read(addressInput: string, participant: string, fromBlock = "0") {
     const address = getAddress(addressInput);
     const contract = new Contract(address, escrowAbi, this.provider);

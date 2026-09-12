@@ -91,6 +91,7 @@ describe("participant-specific agreement actions", () => {
     await repository.createAgreement(metadata);
     const reader = {
       read: vi.fn(async () => ({ snapshot, timeline: [] })),
+      readSnapshot: vi.fn(async () => snapshot),
     };
     const service = new AgreementDashboardService(repository, reader);
 
@@ -110,6 +111,7 @@ describe("participant-specific agreement actions", () => {
     await repository.createAgreement(metadata);
     const service = new AgreementDashboardService(repository, {
       read: vi.fn(),
+      readSnapshot: vi.fn(),
     });
 
     await expect(service.list("0x9000000000000000000000000000000000000009")).resolves.toEqual([]);
@@ -120,11 +122,10 @@ describe("participant-specific agreement actions", () => {
     await repository.createAgreement(metadata);
     await repository.createAgreement(closedMetadata);
     const reader = {
-      read: vi.fn(async (address: string) => ({
-        snapshot:
-          address === closedMetadata.escrowAddress ? closedSnapshot : snapshot,
-        timeline: [],
-      })),
+      readSnapshot: vi.fn(async (address: string) =>
+        address === closedMetadata.escrowAddress ? closedSnapshot : snapshot,
+      ),
+      read: vi.fn(),
     };
     const service = new AgreementDashboardService(repository, reader, "sepolia");
 
@@ -158,6 +159,8 @@ describe("participant-specific agreement actions", () => {
         status: "closed",
       },
     ]);
+    expect(reader.readSnapshot).toHaveBeenCalledTimes(2);
+    expect(reader.read).not.toHaveBeenCalled();
     expect(Object.keys(items[0]!).sort()).toEqual([
       "arbitrator",
       "buyer",

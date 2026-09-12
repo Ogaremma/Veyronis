@@ -130,6 +130,7 @@ async function setupDiscovery() {
     },
   ];
   const listDiscovery = vi.fn(async () => items);
+  const details = vi.fn();
   const service = {
     prepare: vi.fn(),
     getAgreement: vi.fn(),
@@ -138,13 +139,13 @@ async function setupDiscovery() {
   const server = createServer(createAgreementHttpHandler(service as never, {
     auth,
     appEnv: "local",
-    dashboard: { listDiscovery } as never,
+    dashboard: { listDiscovery, details } as never,
   }));
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Server did not bind");
-  return { auth, items, listDiscovery, url: `http://127.0.0.1:${address.port}` };
+  return { auth, details, items, listDiscovery, url: `http://127.0.0.1:${address.port}` };
 }
 
 async function setupCondition() {
@@ -219,12 +220,13 @@ describe("agreement HTTP authorization", () => {
   });
 
   it("returns the public discovery list to unauthenticated visitors", async () => {
-    const { items, listDiscovery, url } = await setupDiscovery();
+    const { details, items, listDiscovery, url } = await setupDiscovery();
     const response = await fetch(`${url}/agreements/discovery`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual(items);
     expect(listDiscovery).toHaveBeenCalledOnce();
+    expect(details).not.toHaveBeenCalled();
   });
 
   it("returns the same public discovery list for participant and non-participant wallets", async () => {

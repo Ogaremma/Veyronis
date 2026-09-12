@@ -18,13 +18,21 @@ const metadata = {
     calldataSelector: "0x00000000", requireTransferEvent: false },
 } satisfies AgreementMetadata;
 
+const snapshot = {
+  escrowAddress: escrow, buyer, seller, arbitrator,
+  requiredAmount: "100", agreementCommitment: metadata.agreementCommitment,
+  evidencePolicyCommitment: metadata.evidencePolicyCommitment, state: "AwaitingDelivery" as const,
+  depositedAmount: "100", activeEvidenceCommitment: id("evidence"),
+  verifiedClaimId: ZeroAddress.padEnd(66, "0"), withdrawalAmount: "0", blockNumber: "12",
+};
+
 function service(requiredAmount = "100") {
   return new AgreementReconciliationService({ async read() { return { timeline: [], snapshot: {
     escrowAddress: escrow, buyer, seller, arbitrator, requiredAmount,
     agreementCommitment: metadata.agreementCommitment, evidencePolicyCommitment: metadata.evidencePolicyCommitment,
     state: "AwaitingDelivery", depositedAmount: "100", activeEvidenceCommitment: id("evidence"),
     verifiedClaimId: ZeroAddress.padEnd(66, "0"), withdrawalAmount: "0", blockNumber: "12",
-  } }; } });
+  } }; }, readSnapshot: async () => ({ ...snapshot, requiredAmount }) });
 }
 
 describe("agreement reconciliation", () => {
