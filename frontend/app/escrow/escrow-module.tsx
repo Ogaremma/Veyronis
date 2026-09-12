@@ -277,7 +277,7 @@ function AgreementConditionsStep({
       {external && (
         <>
           <div className="form-two">
-            <Field label="Source chain (Attestcoin key)" name="sourceChainKey" value={form.sourceChainKey} update={update} />
+            <label>Source chain<select value={form.sourceChainKey} onChange={event => update("sourceChainKey", event.currentTarget.value)}><option value="1">Sepolia (Attestcoin key 1)</option></select></label>
             <label>
               Asset type
               <select value={form.assetKind} onChange={(event) => updateAssetKind(event.currentTarget.value)}>

@@ -130,11 +130,19 @@ export function createAgreementHttpHandler(
         }
         const match = request.url?.match(/^\/agreements\/(0x[a-fA-F0-9]{64})$/);
         if (match?.[1]) {
-          sendJson(
-            response,
-            200,
-            await options.dashboard.details(match[1], session.address),
-          );
+          try {
+            sendJson(response, 200, await options.dashboard.details(match[1], session.address));
+          } catch (error) {
+            if (error instanceof Error && error.message === "Not an agreement participant") {
+              sendJson(response, 403, { error: "Wallet is not an agreement participant" });
+              return;
+            }
+            if (error instanceof Error && error.message === "Agreement not found") {
+              sendJson(response, 404, { error: "Agreement not found" });
+              return;
+            }
+            throw error;
+          }
           return;
         }
       }

@@ -54,10 +54,15 @@ export class AgreementDashboardService {
       await this.repository.listAgreementsForParticipant(address);
     return Promise.all(
       agreements.map(async (metadata) => {
-        if (!metadata.escrowAddress) return { metadata, role: roleFor(metadata, address) };
-        const result = await this.reconciliation.reconcile(metadata, address);
-        await this.repository.recordReconciliation({ agreementId: metadata.id, ...result.reconciliation });
-        return { metadata, role: roleFor(metadata, address), chain: result.snapshot };
+        const role = roleFor(metadata, address);
+        if (!metadata.escrowAddress) return { metadata, role };
+        try {
+          const result = await this.reconciliation.reconcile(metadata, address);
+          await this.repository.recordReconciliation({ agreementId: metadata.id, ...result.reconciliation });
+          return { metadata, role, chain: result.snapshot };
+        } catch {
+          return { metadata, role, chain: await this.reader.readSnapshot(metadata.escrowAddress, address) };
+        }
       }),
     );
   }
@@ -68,21 +73,15 @@ export class AgreementDashboardService {
     const role = roleFor(metadata, address);
     if (!metadata.escrowAddress)
       return { metadata, role, timeline: [], actions: [] };
-    const { snapshot, timeline, reconciliation } =
-      await this.reconciliation.reconcile(metadata, address);
-    await this.repository.recordReconciliation({ agreementId: metadata.id, ...reconciliation });
-    return {
-      metadata,
-      role,
-      chain: snapshot,
-      timeline,
-      reconciliation,
-      actions: actionsFor(
-        role,
-        snapshot.state,
-        BigInt(snapshot.withdrawalAmount),
-      ),
-    };
+    try {
+      const { snapshot, timeline, reconciliation } =
+        await this.reconciliation.reconcile(metadata, address);
+      await this.repository.recordReconciliation({ agreementId: metadata.id, ...reconciliation });
+      return { metadata, role, chain: snapshot, timeline, reconciliation, actions: actionsFor(role, snapshot.state, BigInt(snapshot.withdrawalAmount)) };
+    } catch {
+      const snapshot = await this.reader.readSnapshot(metadata.escrowAddress, address);
+      return { metadata, role, chain: snapshot, timeline: [], actions: actionsFor(role, snapshot.state, BigInt(snapshot.withdrawalAmount)) };
+    }
   }
 }
 function roleFor(

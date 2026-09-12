@@ -279,7 +279,8 @@ describe("agreement HTTP authorization", () => {
     );
 
     expect(responses.slice(0, 3).map((response) => response.status)).toEqual([200, 200, 200]);
-    expect(responses[3]!.status).not.toBe(200);
+    expect(responses[3]!.status).toBe(403);
+    await expect(responses[3]!.json()).resolves.toEqual({ error: "Wallet is not an agreement participant" });
   });
 
   it("scopes GET /agreements to the authenticated participant", async () => {

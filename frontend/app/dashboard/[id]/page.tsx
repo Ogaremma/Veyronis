@@ -31,8 +31,15 @@ export default function AgreementDetailsPage() {
   const [error, setError] = useState("");
   const [transaction, setTransaction] = useState<TransactionReceiptInfo>({ status: "IDLE" });
   const load = useCallback(async () => {
-    const response = await fetch(`${API}/agreements/${id}`, { credentials: "include", cache: "no-store" });
-    if (!response.ok) throw new Error("Unable to reconcile this agreement. Sign in with a participant wallet.");
+    let response: Response;
+    try {
+      response = await fetch(`${API}/agreements/${id}`, { credentials: "include", cache: "no-store" });
+    } catch {
+      throw new Error("Unable to reach the agreement service. Check your connection and try again.");
+    }
+    if (response.status === 401) throw new Error("Wallet authentication required. Sign in with a participant wallet and try again.");
+    if (response.status === 403) throw new Error("This wallet is not a participant in this agreement.");
+    if (!response.ok) throw new Error(`Unable to load agreement details (HTTP ${response.status}).`);
     setDetail(await response.json());
   }, [id]);
   useEffect(() => { void load().catch((reason) => setError(reason.message)); }, [load]);

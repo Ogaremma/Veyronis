@@ -117,6 +117,37 @@ describe("participant-specific agreement actions", () => {
     await expect(service.list("0x9000000000000000000000000000000000000009")).resolves.toEqual([]);
   });
 
+  it("opens the agreement for every participant regardless of address casing", async () => {
+    const repository = new InMemoryAgreementRepository();
+    await repository.createAgreement(metadata);
+    const reader = { read: vi.fn(async () => ({ snapshot, timeline: [] })), readSnapshot: vi.fn(async () => snapshot) };
+    const service = new AgreementDashboardService(repository, reader);
+    for (const [address, role] of [[metadata.buyer, "buyer"], [metadata.seller, "seller"], [metadata.arbitrator, "arbitrator"]] as const) {
+      await expect(service.details(metadata.id, address.toLowerCase())).resolves.toMatchObject({ role, chain: snapshot });
+    }
+  });
+
+  it("recognizes the production seller when event-log reconciliation is unavailable", async () => {
+    const liveMetadata = { ...metadata, id: id("live-agreement"), buyer: "0x7e2508E29F4d013bea4E8d7840f648AEA8B1f13F", seller: "0x4C9dE9AEFb29Fc33CCeFbd048b244aBEf251Db02", arbitrator: "0x0b843e489e21D3cb56AE0E9b23EfdE486843437D", escrowAddress: "0xdc99785c8d14F49E0731145947514A9DE42Da59c" };
+    const liveSnapshot = { ...snapshot, buyer: liveMetadata.buyer, seller: liveMetadata.seller, arbitrator: liveMetadata.arbitrator, escrowAddress: liveMetadata.escrowAddress, state: "AwaitingDelivery" as const };
+    const repository = new InMemoryAgreementRepository();
+    await repository.createAgreement(liveMetadata);
+    const reader = { read: vi.fn(async () => { throw new Error("RPC block range exceeded"); }), readSnapshot: vi.fn(async () => liveSnapshot) };
+    const service = new AgreementDashboardService(repository, reader);
+    await expect(service.details(liveMetadata.id, liveMetadata.seller.toLowerCase())).resolves.toMatchObject({ role: "seller", chain: liveSnapshot, timeline: [], actions: ["openDispute"] });
+    expect(reader.readSnapshot).toHaveBeenCalledWith(liveMetadata.escrowAddress, liveMetadata.seller);
+  });
+
+  it("keeps participant-only details unavailable to unrelated wallets", async () => {
+    const repository = new InMemoryAgreementRepository();
+    await repository.createAgreement(metadata);
+    const reader = { read: vi.fn(), readSnapshot: vi.fn() };
+    const service = new AgreementDashboardService(repository, reader);
+    await expect(service.details(metadata.id, "0x9000000000000000000000000000000000000009")).rejects.toThrow("Not an agreement participant");
+    expect(reader.read).not.toHaveBeenCalled();
+    expect(reader.readSnapshot).not.toHaveBeenCalled();
+  });
+
   it("returns a public, safe, and authoritative discovery list", async () => {
     const repository = new InMemoryAgreementRepository();
     await repository.createAgreement(metadata);

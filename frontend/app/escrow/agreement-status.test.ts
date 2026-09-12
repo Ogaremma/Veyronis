@@ -90,6 +90,13 @@ describe("live contract status", () => {
     expect(roleForDiscoveryAgreement(item, undefined)).toBeUndefined();
   });
 
+  it("recognizes the production seller regardless of address casing", () => {
+    const item = { ...discoveryItem("AwaitingDelivery"), seller: "0x4C9dE9AEFb29Fc33CCeFbd048b244aBEf251Db02" };
+    expect(roleForDiscoveryAgreement(item, item.seller)).toBe("seller");
+    expect(roleForDiscoveryAgreement(item, item.seller.toLowerCase())).toBe("seller");
+    expect(roleForDiscoveryAgreement(item, item.buyer)).toBe("buyer");
+  });
+
   it("shows read-only actions and counterparties for public discovery", () => {
     const item = discoveryItem("AwaitingDelivery");
     expect(discoveryDisplayStatus(item)).toBe("AwaitingDelivery");
