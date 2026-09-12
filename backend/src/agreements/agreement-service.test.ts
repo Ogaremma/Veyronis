@@ -101,6 +101,44 @@ describe("AgreementCreationService", () => {
     );
   });
 
+  it("creates and deploys an agreement with an ERC-20 external blockchain condition", async () => {
+    const repository = new InMemoryAgreementRepository();
+    const deployer = new FakeDeployer();
+    const service = new AgreementCreationService(repository, deployer);
+    const externalDraft: AgreementDraft = {
+      ...draft,
+      policy: {
+        ...draft.policy,
+        assetKind: "erc20",
+        expectedSourceContract: arbitrator,
+        expectedAsset: arbitrator,
+        amountRule: "minimum",
+        amount: "100000000",
+        calldataSelector: "0xa9059cbb",
+        requireTransferEvent: true,
+      },
+    };
+
+    const prepared = await service.prepare(externalDraft);
+    const deployed = await service.confirmAndDeploy(prepared.agreement.id);
+    const expectedPolicyCommitment = computeEvidencePolicyCommitment(
+      externalDraft.policy,
+    );
+    const expectedAgreementCommitment = computeAgreementCommitment(
+      externalDraft,
+      expectedPolicyCommitment,
+    );
+
+    expect(deployed.deploymentStatus).toBe("DEPLOYED");
+    expect(deployed.evidencePolicyCommitment).toBe(expectedPolicyCommitment);
+    expect(deployed.agreementCommitment).toBe(expectedAgreementCommitment);
+    expect(deployed.policy).toEqual(externalDraft.policy);
+    expect(deployer.input).toMatchObject({
+      evidencePolicyCommitment: expectedPolicyCommitment,
+      agreementCommitment: expectedAgreementCommitment,
+    });
+  });
+
   it("records a sanitized failure without fabricating a deployment", async () => {
     const repository = new InMemoryAgreementRepository();
     const deployer = new FakeDeployer();

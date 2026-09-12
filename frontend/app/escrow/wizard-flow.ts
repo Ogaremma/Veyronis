@@ -3,7 +3,7 @@ export const agreementWizardSteps = [
   "Payment",
   "Deliverables",
   "Evidence Requirements",
-  "Optional Blockchain Verification",
+  "Agreement Conditions",
   "Review",
   "Deploy & Fund",
 ] as const;

@@ -14,9 +14,17 @@ import { EthersAgreementContractReader } from "./contract-read-layer.js";
 import { AgreementDashboardService } from "./dashboard-service.js";
 import { WorkEvidenceService } from "./work-evidence-service.js";
 import { SqlWorkEvidenceRepository } from "./work-evidence-repository.js";
+import { AgreementConditionService } from "./agreement-condition-service.js";
+import {
+  SqlAgreementConditionVerificationRepository,
+} from "./agreement-condition-repository.js";
 import { createLiveAttestcoinVerifier } from "../attestcoin/live-verifier.js";
+import { AttestcoinService } from "../attestcoin/attestcoin-service.js";
+import { SourceTransactionPolicyEvaluator } from "../attestcoin/source-transaction-interpreter.js";
+import { EthersEvidenceClaimRegistryGateway } from "../attestcoin/ethers-gateways.js";
 
 const config = loadAgreementServerConfig();
+const appConfig = loadConfig();
 const artifactPath = resolve(
   fileURLToPath(new URL(".", import.meta.url)),
   "../contracts/VeyronisEscrow.json",
@@ -27,6 +35,7 @@ const artifact = JSON.parse(await readFile(artifactPath, "utf8")) as {
 };
 const provider = new JsonRpcProvider(config.DEPLOYER_RPC_URL);
 const sepoliaVerifierProvider = new JsonRpcProvider(config.DEPLOYER_RPC_URL);
+const creditcoinProvider = new JsonRpcProvider(appConfig.CREDITCOIN_RPC_URL);
 const deployer = new EthersEscrowDeployer(
   new Wallet(config.DEPLOYER_PRIVATE_KEY, provider),
   artifact.abi as InterfaceAbi,
@@ -44,11 +53,21 @@ const workEvidence = new WorkEvidenceService(
   agreementRepository,
   new SqlWorkEvidenceRepository(database),
 );
+const condition = new AgreementConditionService(
+  agreementRepository,
+  new SqlAgreementConditionVerificationRepository(database),
+  new AttestcoinService(appConfig, creditcoinProvider),
+  new SourceTransactionPolicyEvaluator(),
+  new EthersEvidenceClaimRegistryGateway(
+    appConfig.VEYRONIS_EVIDENCE_REGISTRY_ADDRESS,
+    new Wallet(appConfig.VEYRONIS_VERIFIER_PRIVATE_KEY, provider),
+  ),
+);
 const attestcoinVerifier = config.APP_ENV === "production"
-  ? await createLiveAttestcoinVerifier(loadConfig(), sepoliaVerifierProvider)
+  ? await createLiveAttestcoinVerifier(appConfig, sepoliaVerifierProvider, creditcoinProvider)
   : await (async () => {
       try {
-        return await createLiveAttestcoinVerifier(loadConfig(), sepoliaVerifierProvider);
+        return await createLiveAttestcoinVerifier(appConfig, sepoliaVerifierProvider);
       } catch {
         return undefined;
       }
@@ -57,6 +76,7 @@ const server = createServer(createAgreementHttpHandler(service, {
   auth,
   dashboard,
   workEvidence,
+  condition,
   appEnv: config.APP_ENV,
   ...(attestcoinVerifier ? { attestcoinVerifier } : {}),
 }));

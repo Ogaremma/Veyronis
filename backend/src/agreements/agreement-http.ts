@@ -2,6 +2,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { getAddress } from "ethers";
 import type { AgreementCreationService } from "./agreement-service.js";
 import type { AgreementDashboardService } from "./dashboard-service.js";
+import type { AgreementConditionService } from "./agreement-condition-service.js";
+import { AgreementConditionServiceError } from "./agreement-condition-service.js";
 import type { WorkEvidenceService } from "./work-evidence-service.js";
 import { WorkEvidenceServiceError } from "./work-evidence-service.js";
 import type { AttestcoinVerifier } from "../attestcoin/attestcoin-verifier.js";
@@ -24,11 +26,13 @@ export function createAgreementHttpHandler(
     confirmationLimiter?: InMemoryRateLimiter;
     attestcoinVerifier?: Pick<AttestcoinVerifier, "verifyAndSubmit">;
     workEvidence?: WorkEvidenceService;
+    condition?: AgreementConditionService;
   },
 ) {
   const creationLimiter = options?.creationLimiter ?? new InMemoryRateLimiter();
   const confirmationLimiter = options?.confirmationLimiter ?? new InMemoryRateLimiter();
   const workEvidence = options?.workEvidence;
+  const condition = options?.condition;
   return async (
     request: IncomingMessage,
     response: ServerResponse,
@@ -93,6 +97,16 @@ export function createAgreementHttpHandler(
             response,
             200,
             await options.dashboard.list(session.address),
+          );
+          return;
+        }
+        const conditionDetails = request.url?.match(
+          /^\/agreements\/(0x[a-fA-F0-9]{64})\/condition$/,
+        );
+        if (conditionDetails?.[1] && condition) {
+          await sendConditionResult(
+            response,
+            condition.get(conditionDetails[1], session.address),
           );
           return;
         }
@@ -164,6 +178,23 @@ export function createAgreementHttpHandler(
         });
         if (!result.ok) { sendJson(response, 422, { ok: false, code: result.code, message: result.message }); return; }
         sendJson(response, 200, { ok: true, claimId: result.claimId, registryTransactionHash: result.transactionHash, evidence: { sourceChainKey: result.claim.sourceChainKey, sourceTransactionHash: result.claim.sourceTransactionHash, subject: result.claim.subject, evidenceType: result.claim.evidenceType } });
+        return;
+      }
+      const conditionVerification = request.url?.match(
+        /^\/agreements\/(0x[a-fA-F0-9]{64})\/condition\/verify$/,
+      );
+      const conditionAgreementId = conditionVerification?.[1];
+      if (conditionAgreementId && condition) {
+        const session = authenticatedSession(request, options?.auth, response);
+        if (!session) return;
+        await sendConditionResult(
+          response,
+          condition.verify(
+            conditionAgreementId,
+            session.address,
+            await readJson(request),
+          ),
+        );
         return;
       }
       const workEvidenceSubmission = request.url?.match(
@@ -246,6 +277,25 @@ async function sendWorkEvidenceResult(
     }
     if (error instanceof Error && error.name === "ZodError") {
       sendJson(response, 400, { error: "Invalid work evidence request" });
+      return;
+    }
+    throw error;
+  }
+}
+
+async function sendConditionResult(
+  response: ServerResponse,
+  result: Promise<unknown>,
+): Promise<void> {
+  try {
+    sendJson(response, 200, await result);
+  } catch (error) {
+    if (error instanceof AgreementConditionServiceError) {
+      sendJson(response, error.status, { error: error.message });
+      return;
+    }
+    if (error instanceof Error && error.name === "ZodError") {
+      sendJson(response, 400, { error: "Invalid condition request" });
       return;
     }
     throw error;

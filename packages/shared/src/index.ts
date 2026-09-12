@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AbiCoder, keccak256, toUtf8Bytes, ZeroHash } from "ethers";
+import { AbiCoder, id, keccak256, toUtf8Bytes, ZeroHash } from "ethers";
 
 export const evidenceReferenceSchema = z.object({
   escrowAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
@@ -116,6 +116,67 @@ export const evidencePolicySchema = z
 
 export type EvidencePolicy = z.infer<typeof evidencePolicySchema>;
 
+export const externalBlockchainConditionSchema = z
+  .object({
+    kind: z.literal("external_blockchain_action"),
+    sourceChainKey: z.number().int().positive(),
+    assetType: z.enum(["native", "erc20"]),
+    tokenContract: addressSchema.optional(),
+    expectedSender: addressSchema,
+    expectedRecipient: addressSchema,
+    amount: uint256StringSchema,
+    amountRule: z.enum(["exact", "minimum"]),
+    requireSuccess: z.boolean(),
+  })
+  .superRefine((condition, context) => {
+    if (condition.assetType === "erc20" && !condition.tokenContract) {
+      context.addIssue({
+        code: "custom",
+        message: "ERC-20 conditions require a token contract",
+      });
+    }
+    if (condition.assetType === "native" && condition.tokenContract) {
+      context.addIssue({
+        code: "custom",
+        message: "Native conditions cannot specify a token contract",
+      });
+    }
+    if (!condition.requireSuccess) {
+      context.addIssue({
+        code: "custom",
+        message: "External blockchain conditions require a successful transaction",
+      });
+    }
+  });
+export type ExternalBlockchainCondition = z.infer<
+  typeof externalBlockchainConditionSchema
+>;
+
+export const BLOCKCHAIN_CONDITION_DISABLED_EVIDENCE_TYPE = id(
+  "BLOCKCHAIN_VERIFICATION_DISABLED",
+);
+
+export function externalBlockchainConditionFromPolicy(
+  policy: EvidencePolicy,
+): ExternalBlockchainCondition | undefined {
+  if (policy.evidenceType === BLOCKCHAIN_CONDITION_DISABLED_EVIDENCE_TYPE) {
+    return undefined;
+  }
+  return {
+    kind: "external_blockchain_action",
+    sourceChainKey: policy.sourceChainKey,
+    assetType: policy.assetKind,
+    ...(policy.assetKind === "erc20"
+      ? { tokenContract: policy.expectedAsset }
+      : {}),
+    expectedSender: policy.expectedSender,
+    expectedRecipient: policy.expectedRecipient,
+    amount: policy.amount,
+    amountRule: policy.amountRule,
+    requireSuccess: true,
+  };
+}
+
 export const deploymentStatusSchema = z.enum([
   "DRAFT",
   "AWAITING_CONFIRMATION",
@@ -218,6 +279,36 @@ export const workEvidenceReviewSchema = z.object({
   reviewNote: z.string().max(1000).optional(),
 });
 export type WorkEvidenceReview = z.infer<typeof workEvidenceReviewSchema>;
+
+export const agreementConditionStatusSchema = z.enum([
+  "pending",
+  "verification_in_progress",
+  "verified",
+  "verification_failed",
+]);
+export type AgreementConditionStatus = z.infer<
+  typeof agreementConditionStatusSchema
+>;
+
+export interface AgreementConditionVerification {
+  id: string;
+  agreementId: string;
+  submitter: string;
+  transactionHash: string;
+  status: AgreementConditionStatus;
+  verifiedClaimId?: string;
+  verifiedAmount?: string;
+  failureCode?: string;
+  failureMessage?: string;
+  submittedAt: string;
+  verifiedAt?: string;
+  updatedAt: string;
+}
+
+export interface AgreementConditionDetails {
+  condition: ExternalBlockchainCondition;
+  verification?: AgreementConditionVerification;
+}
 
 export interface WorkEvidenceSubmission
   extends WorkEvidenceSubmissionInput {

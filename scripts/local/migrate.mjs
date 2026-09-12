@@ -8,6 +8,7 @@ try {
     "001_create_agreements.sql",
     "002_create_agreement_reconciliations.sql",
     "003_create_work_evidence.sql",
+    "004_create_agreement_conditions.sql",
   ]) {
     await pool.query(await readFile(`backend/sql/${migration}`, "utf8"));
     console.log(`Applied ${migration}`);

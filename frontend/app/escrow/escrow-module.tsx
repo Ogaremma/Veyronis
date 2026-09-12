@@ -1,7 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
-import { ZeroAddress, formatEther, hexlify, id, parseEther, randomBytes } from "ethers";
+import { ZeroAddress, formatEther, hexlify, id, parseEther, parseUnits, randomBytes } from "ethers";
 import { computeAgreementCommitment, computeEvidencePolicyCommitment, validateAgreementDraft, type AgreementDashboardItem, type AgreementDeliverable, type AgreementDraft } from "@veyronis/shared";
 import { HttpAgreementCreationClient } from "../agreement-client";
 import { requiredTransactionChainId, transactionNetworkError } from "../transaction-network-guard";
@@ -16,6 +16,28 @@ const API = process.env.NEXT_PUBLIC_BACKEND_URL as string;
 const REGISTRY = (process.env.NEXT_PUBLIC_EVIDENCE_REGISTRY_ADDRESS ?? process.env.NEXT_PUBLIC_VEYRONIS_EVIDENCE_REGISTRY_ADDRESS) as string;
 type AgreementItem = AgreementDashboardItem;
 type WalletConnector = { getProvider(): Promise<unknown> } | undefined;
+type ConditionMode = "work" | "external" | "both";
+
+interface WizardForm {
+  buyer: string;
+  seller: string;
+  arbitrator: string;
+  evidenceRegistry: string;
+  requiredAmountEth: string;
+  agreementNonce: string;
+  conditionMode: ConditionMode;
+  sourceChainKey: string;
+  assetKind: "native" | "erc20";
+  tokenContract: string;
+  expectedRecipient: string;
+  expectedSender: string;
+  amountRule: "exact" | "minimum";
+  conditionAmount: string;
+  conditionDecimals: string;
+  minSourceBlock: string;
+  maxSourceBlock: string;
+  deliverables: AgreementDeliverable[];
+}
 
 export function EscrowModule({ walletAddress, networkName }: { walletAddress: string; networkName: string }) {
   const { chainId, connector } = useAccount();
@@ -60,9 +82,71 @@ function AgreementCard({ item }: { item: AgreementItem }) {
 
 function EscrowWizard({ walletAddress, networkName, chainId, connector, close }: { walletAddress: string; networkName: string; chainId: number | undefined; connector: WalletConnector; close: () => void }) {
   const [step, setStep] = useState(1); const [error, setError] = useState(""); const [deploying, setDeploying] = useState(false); const [deployed, setDeployed] = useState(""); const [agreementId, setAgreementId] = useState(""); const [flowStage, setFlowStage] = useState<DeployAndFundStage>("deploying"); const [flowResult, setFlowResult] = useState<DeployAndFundResult>();
-  const [form, setForm] = useState({ buyer: walletAddress, seller: "", arbitrator: "", evidenceRegistry: REGISTRY, requiredAmountEth: "0.1", agreementNonce: hexlify(randomBytes(32)), sourceChainKey: "1", assetKind: "native", expectedSourceContract: ZeroAddress, expectedRecipient: "", expectedAsset: ZeroAddress, expectedSender: walletAddress, amountRule: "exact", evidenceAmountEth: "0.1", minSourceBlock: "0", maxSourceBlock: "0", calldataSelector: "0x00000000", requireTransferEvent: false, blockchainVerificationEnabled: false, deliverables: [] as AgreementDeliverable[] });
+  const [form, setForm] = useState<WizardForm>({
+    buyer: walletAddress,
+    seller: "",
+    arbitrator: "",
+    evidenceRegistry: REGISTRY,
+    requiredAmountEth: "0.1",
+    agreementNonce: hexlify(randomBytes(32)),
+    conditionMode: "work",
+    sourceChainKey: "1",
+    assetKind: "erc20",
+    tokenContract: "",
+    expectedRecipient: "",
+    expectedSender: "",
+    amountRule: "exact",
+    conditionAmount: "100",
+    conditionDecimals: "6",
+    minSourceBlock: "0",
+    maxSourceBlock: "0",
+    deliverables: [],
+  });
   const update = (name: string, value: string | boolean) => setForm(current => ({ ...current, [name]: value }));
-  const draft = useMemo<AgreementDraft>(() => ({ buyer: form.buyer, seller: form.seller, arbitrator: form.arbitrator, evidenceRegistry: form.evidenceRegistry, requiredAmount: toWei(form.requiredAmountEth), agreementNonce: form.agreementNonce, deliverables: form.deliverables, policy: form.blockchainVerificationEnabled ? { version: 1, evidenceType: id("SOURCE_PAYMENT"), sourceChainKey: Number(form.sourceChainKey), assetKind: form.assetKind as "native" | "erc20", expectedSourceContract: form.expectedSourceContract, expectedRecipient: form.expectedRecipient || form.seller, expectedAsset: form.expectedAsset, expectedSender: form.expectedSender || form.buyer, amountRule: form.amountRule as "exact" | "minimum", amount: toWei(form.evidenceAmountEth), minSourceBlock: form.minSourceBlock, maxSourceBlock: form.maxSourceBlock, calldataSelector: form.calldataSelector, requireTransferEvent: form.requireTransferEvent } : { version: 1, evidenceType: id("BLOCKCHAIN_VERIFICATION_DISABLED"), sourceChainKey: 1, assetKind: "native", expectedSourceContract: ZeroAddress, expectedRecipient: form.seller, expectedAsset: ZeroAddress, expectedSender: form.buyer, amountRule: "exact", amount: toWei(form.requiredAmountEth), minSourceBlock: "0", maxSourceBlock: "0", calldataSelector: "0x00000000", requireTransferEvent: false } }), [form]);
+  const draft = useMemo<AgreementDraft>(() => {
+    const externalCondition = form.conditionMode !== "work";
+    const erc20 = form.assetKind === "erc20";
+    return {
+      buyer: form.buyer,
+      seller: form.seller,
+      arbitrator: form.arbitrator,
+      evidenceRegistry: form.evidenceRegistry,
+      requiredAmount: toWei(form.requiredAmountEth),
+      agreementNonce: form.agreementNonce,
+      deliverables: form.deliverables,
+      policy: externalCondition ? {
+        version: 1,
+        evidenceType: id("SOURCE_PAYMENT"),
+        sourceChainKey: Number(form.sourceChainKey),
+        assetKind: form.assetKind as "native" | "erc20",
+        expectedSourceContract: erc20 ? form.tokenContract : ZeroAddress,
+        expectedRecipient: form.expectedRecipient || form.buyer,
+        expectedAsset: erc20 ? form.tokenContract : ZeroAddress,
+        expectedSender: form.expectedSender || form.seller,
+        amountRule: form.amountRule as "exact" | "minimum",
+        amount: toConditionUnits(form.conditionAmount, form.conditionDecimals),
+        minSourceBlock: form.minSourceBlock,
+        maxSourceBlock: form.maxSourceBlock,
+        calldataSelector: erc20 ? "0xa9059cbb" : "0x00000000",
+        requireTransferEvent: erc20,
+      } : {
+        version: 1,
+        evidenceType: id("BLOCKCHAIN_VERIFICATION_DISABLED"),
+        sourceChainKey: 1,
+        assetKind: "native",
+        expectedSourceContract: ZeroAddress,
+        expectedRecipient: form.seller,
+        expectedAsset: ZeroAddress,
+        expectedSender: form.buyer,
+        amountRule: "exact",
+        amount: toWei(form.requiredAmountEth),
+        minSourceBlock: "0",
+        maxSourceBlock: "0",
+        calldataSelector: "0x00000000",
+        requireTransferEvent: false,
+      },
+    };
+  }, [form]);
   const preview = useMemo(() => { try { const valid = validateAgreementDraft(draft); const policy = computeEvidencePolicyCommitment(valid.policy); return { policy, agreement: computeAgreementCommitment(valid, policy) }; } catch { return undefined; } }, [draft]);
   function next() {
     setError("");
@@ -70,7 +154,8 @@ function EscrowWizard({ walletAddress, networkName, chainId, connector, close }:
     if (step === 2 && (!form.requiredAmountEth || Number(form.requiredAmountEth) <= 0)) return setError("Enter a valid payment amount");
     if (step === 3) {
       const activeDeliverables = form.deliverables.filter((deliverable) => deliverable.active);
-      if (activeDeliverables.length === 0) return setError("Add at least one active deliverable");
+      if (form.conditionMode !== "external" && activeDeliverables.length === 0)
+        return setError("Add at least one active deliverable");
       if (activeDeliverables.some((deliverable) => !deliverable.title.trim())) return setError("Enter a title for every active deliverable");
     }
     if (step === 4) {
@@ -78,7 +163,8 @@ function EscrowWizard({ walletAddress, networkName, chainId, connector, close }:
       if (activeDeliverables.some((deliverable) => deliverable.evidenceRequirements.length === 0)) return setError("Add at least one evidence requirement to every active deliverable");
       if (activeDeliverables.some((deliverable) => deliverable.evidenceRequirements.some((requirement) => !requirement.label.trim()))) return setError("Enter a label for every evidence requirement");
     }
-    if (step === 5 && form.blockchainVerificationEnabled && !preview) return setError("Complete the optional blockchain verification rule with valid values");
+    if (step === 5 && form.conditionMode !== "work" && !preview)
+      return setError("Complete the external blockchain condition");
     setStep(current => Math.min(agreementWizardSteps.length, current + 1));
   }
   async function deployAndFund() {
@@ -120,8 +206,8 @@ function EscrowWizard({ walletAddress, networkName, chainId, connector, close }:
     {step === 2 && <WizardSection title="Set the escrow payment" copy="ETH is held by the escrow contract until the agreement reaches a valid settlement state."><div className="asset-select selected"><span className="asset-icon">Ξ</span><div><strong>Ethereum</strong><small>Native asset · {networkName}</small></div><StatusBadge>Selected</StatusBadge></div><Field label="Required amount (ETH)" name="requiredAmountEth" value={form.requiredAmountEth} update={update} type="number" /><details><summary>Advanced deployment settings</summary><Field label="Evidence registry" name="evidenceRegistry" value={form.evidenceRegistry} update={update} /><Field label="Agreement nonce" name="agreementNonce" value={form.agreementNonce} update={update} /></details></WizardSection>}
     {step === 3 && <WizardSection title="Delivery & Evidence" copy="Define what the seller must deliver and what they must provide to prove completion."><DeliverablesEditor deliverables={form.deliverables} onChange={deliverables => setForm(current => ({ ...current, deliverables }))} /></WizardSection>}
     {step === 4 && <WizardSection title="Evidence Requirements" copy="These are application-level proofs for delivery. Buyers and arbitrators review them manually."><EvidenceRequirementsEditor deliverables={form.deliverables} onChange={deliverables => setForm(current => ({ ...current, deliverables }))} /></WizardSection>}
-    {step === 5 && <WizardSection title="Optional Blockchain Verification" copy="Use Attestcoin/Creditcoin to verify objective cross-chain transaction evidence. This is separate from delivery and work evidence."><label className="confirm-check"><input type="checkbox" checked={form.blockchainVerificationEnabled} onChange={event => update("blockchainVerificationEnabled", event.currentTarget.checked)} /><span>Add a cross-chain transaction verification rule</span></label>{form.blockchainVerificationEnabled && <><div className="form-two"><Field label="Expected sender" name="expectedSender" value={form.expectedSender} update={update} /><Field label="Expected recipient" name="expectedRecipient" value={form.expectedRecipient || form.seller} update={update} /><Field label="Transaction amount (ETH)" name="evidenceAmountEth" value={form.evidenceAmountEth} update={update} type="number" /><label>Amount rule<select value={form.amountRule} onChange={event => update("amountRule", event.currentTarget.value)}><option value="exact">Exact amount</option><option value="minimum">Minimum amount</option></select></label></div><details><summary>Advanced rules</summary><div className="form-two"><Field label="Source chain key" name="sourceChainKey" value={form.sourceChainKey} update={update} /><label>Asset type<select value={form.assetKind} onChange={event => update("assetKind", event.currentTarget.value)}><option value="native">Native</option><option value="erc20">ERC-20</option></select></label><Field label="Expected source contract" name="expectedSourceContract" value={form.expectedSourceContract} update={update} /><Field label="Expected asset" name="expectedAsset" value={form.expectedAsset} update={update} /><Field label="Minimum source block" name="minSourceBlock" value={form.minSourceBlock} update={update} /><Field label="Maximum source block" name="maxSourceBlock" value={form.maxSourceBlock} update={update} /><Field label="Collector selector" name="calldataSelector" value={form.calldataSelector} update={update} /></div><label className="confirm-check"><input type="checkbox" checked={form.requireTransferEvent} onChange={event => update("requireTransferEvent", event.currentTarget.checked)} /><span>Require ERC-20 Transfer event</span></label></details></>}<aside className="evidence-note"><strong>Cross-chain facts only</strong><span>Attestcoin/Creditcoin does not verify photographs, files, websites, GitHub work, or physical delivery quality.</span></aside></WizardSection>}
-    {step === 6 && <WizardSection title="Review immutable terms" copy="Confirm every address, deliverable, evidence requirement, and optional verification rule before deployment."><div className="review-grid"><Review label="Buyer" value={draft.buyer} /><Review label="Seller" value={draft.seller} /><Review label="Arbitrator" value={draft.arbitrator} /><Review label="Payment" value={`${form.requiredAmountEth} ETH`} /><Review label="Blockchain verification" value={form.blockchainVerificationEnabled ? "Enabled" : "Disabled"} /><Review label="Agreement commitment" value={preview?.agreement ?? "Invalid"} /></div><div className="deliverable-review">{form.deliverables.filter((deliverable) => deliverable.active).map((deliverable) => <div key={deliverable.id}><strong>{deliverable.title}</strong><small>{deliverable.required ? "Required" : "Optional"} · {deliverable.description || "No description"}</small><ul>{deliverable.evidenceRequirements.map((requirement) => <li key={requirement.id}>{requirement.label} · {requirement.kind.replaceAll("_", " ")} · {requirement.required ? "Required" : "Optional"}</li>)}</ul></div>)}</div><aside className="evidence-note"><strong>Evidence remains advisory</strong><span>Work evidence and verified cross-chain facts support review. They never automatically release escrowed assets.</span></aside></WizardSection>}
+    {step === 5 && <AgreementConditionsStep form={form} update={update} />}
+    {step === 6 && <ReviewStep form={form} draft={draft} preview={preview} />}
     {step === 7 && <div className="deploy-success"><span>{"\u2713"}</span><h2>{flowResult?.funded ? "Escrow funded" : deploying ? flowStage === "deploying" ? "Step 1 of 2 \u2014 Deploying agreement" : "Step 2 of 2 \u2014 Funding escrow" : "Ready to deploy and fund"}</h2><p>{flowResult?.funded ? "Funding is confirmed. The authoritative contract state is AwaitingDelivery." : deploying ? "Approve the exact required amount from the connected buyer wallet." : flowResult ? "Funding did not complete. The deployed agreement remains saved and can be funded from Live Contracts." : "The backend deploys the agreement first, then the connected buyer wallet funds the exact required amount."}</p>{deployed && <code>{deployed}</code>}{agreementId && !deploying && <a className="glass-button primary-button" href={`/dashboard/${agreementId}`}>{flowResult?.funded ? "View Live Contract" : "Fund Contract"}</a>}</div>}
     {error && <p className="form-error" role="alert">{error}</p>}<div className="wizard-actions">{wizardBackLabel(step, false) && <GlassButton disabled={deploying || Boolean(agreementId)} onClick={step === 1 ? close : () => setStep(previousWizardStep(step))}>{wizardBackLabel(step, false)}</GlassButton>}<GlassButton className="primary-button" disabled={step === agreementWizardSteps.length ? deploying || !preview || Boolean(agreementId) : false} onClick={step === agreementWizardSteps.length ? () => void deployAndFund() : next}>{step === agreementWizardSteps.length ? deploying ? flowStage === "deploying" ? "Step 1 of 2 \u2014 Deploying agreement" : "Step 2 of 2 \u2014 Funding escrow" : "Deploy & Fund" : "Continue"}</GlassButton></div>
   </GlassCard></div></div>;
@@ -130,3 +216,165 @@ function toWei(value: string) { try { return parseEther(value || "0").toString()
 function WizardSection({ title, copy, children }: { title: string; copy: string; children: React.ReactNode }) { return <div className="wizard-section"><span className="eyebrow">AGREEMENT SETUP</span><h2>{title}</h2><p>{copy}</p>{children}</div>; }
 function Field({ label, name, value, update, placeholder, type = "text" }: { label: string; name: string; value: string; update: (name: string, value: string) => void; placeholder?: string; type?: string }) { return <label>{label}<GlassInput type={type} value={value} placeholder={placeholder} onChange={event => update(name, event.currentTarget.value)} /></label>; }
 function Review({ label, value }: { label: string; value: string }) { return <div><span>{label}</span><code>{value}</code></div>; }
+
+function AgreementConditionsStep({
+  form,
+  update,
+}: {
+  form: WizardForm;
+  update: (name: string, value: string | boolean) => void;
+}) {
+  const external = form.conditionMode !== "work";
+  const erc20 = form.assetKind === "erc20";
+
+  function updateAssetKind(value: string) {
+    update("assetKind", value);
+    update("conditionDecimals", value === "native" ? "18" : "6");
+  }
+
+  return (
+    <WizardSection
+      title="Agreement Conditions"
+      copy="Choose what must be satisfied before settlement. Work conditions are reviewed manually; external blockchain conditions are verified by Attestcoin on Creditcoin."
+    >
+      <div className="condition-mode">
+        <label>
+          <input
+            type="radio"
+            name="conditionMode"
+            checked={form.conditionMode === "work"}
+            onChange={() => update("conditionMode", "work")}
+          />
+          <span><strong>Work / Delivery</strong><small>Define what the seller must deliver.</small></span>
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="conditionMode"
+            checked={form.conditionMode === "external"}
+            onChange={() => update("conditionMode", "external")}
+          />
+          <span><strong>External Blockchain Action</strong><small>Require a verifiable action on another blockchain.</small></span>
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="conditionMode"
+            checked={form.conditionMode === "both"}
+            onChange={() => update("conditionMode", "both")}
+          />
+          <span><strong>Both</strong><small>Require delivery and an external blockchain action.</small></span>
+        </label>
+      </div>
+      {external && (
+        <>
+          <div className="form-two">
+            <Field label="Source chain (Attestcoin key)" name="sourceChainKey" value={form.sourceChainKey} update={update} />
+            <label>
+              Asset type
+              <select value={form.assetKind} onChange={(event) => updateAssetKind(event.currentTarget.value)}>
+                <option value="erc20">ERC-20 transfer</option>
+                <option value="native">Native transfer</option>
+              </select>
+            </label>
+            {erc20 && (
+              <Field label="Token contract" name="tokenContract" value={form.tokenContract} update={update} placeholder="0x..." />
+            )}
+            <Field label="Sender (seller)" name="expectedSender" value={form.expectedSender || form.seller} update={update} />
+            <Field label="Recipient (buyer)" name="expectedRecipient" value={form.expectedRecipient || form.buyer} update={update} />
+            <Field label="Amount" name="conditionAmount" value={form.conditionAmount} update={update} type="number" />
+            <Field label="Amount decimals" name="conditionDecimals" value={form.conditionDecimals} update={update} type="number" />
+            <label>
+              Amount rule
+              <select value={form.amountRule} onChange={(event) => update("amountRule", event.currentTarget.value)}>
+                <option value="exact">Exact amount</option>
+                <option value="minimum">Minimum amount</option>
+              </select>
+            </label>
+          </div>
+          <details>
+            <summary>Advanced source-block rules</summary>
+            <div className="form-two">
+              <Field label="Minimum source block" name="minSourceBlock" value={form.minSourceBlock} update={update} />
+              <Field label="Maximum source block" name="maxSourceBlock" value={form.maxSourceBlock} update={update} />
+            </div>
+          </details>
+        </>
+      )}
+      <aside className="evidence-note">
+        <strong>Blockchain facts only</strong>
+        <span>Attestcoin and Creditcoin verify objective blockchain transactions. They do not verify photographs, files, websites, GitHub work, or physical delivery quality.</span>
+      </aside>
+    </WizardSection>
+  );
+}
+
+function ReviewStep({
+  form,
+  draft,
+  preview,
+}: {
+  form: WizardForm;
+  draft: AgreementDraft;
+  preview: { policy: string; agreement: string } | undefined;
+}) {
+  const external = form.conditionMode !== "work";
+  return (
+    <WizardSection
+      title="Review immutable terms"
+      copy="Confirm every participant, condition, deliverable, and evidence requirement before deployment."
+    >
+      <div className="review-grid">
+        <Review label="Buyer" value={draft.buyer} />
+        <Review label="Seller" value={draft.seller} />
+        <Review label="Arbitrator" value={draft.arbitrator} />
+        <Review label="Payment" value={`${form.requiredAmountEth} ETH`} />
+        <Review label="Conditions" value={conditionReviewLabel(form.conditionMode)} />
+        <Review label="Agreement commitment" value={preview?.agreement ?? "Invalid"} />
+      </div>
+      {external && (
+        <div className="review-grid">
+          <Review label="Source chain key" value={form.sourceChainKey} />
+          <Review label="External asset" value={form.assetKind === "erc20" ? form.tokenContract : "Native asset"} />
+          <Review label="Sender" value={form.expectedSender || form.seller} />
+          <Review label="Recipient" value={form.expectedRecipient || form.buyer} />
+          <Review label="Amount" value={`${form.conditionAmount} / ${form.conditionDecimals} decimals`} />
+          <Review label="Amount rule" value={form.amountRule} />
+        </div>
+      )}
+      <div className="deliverable-review">
+        {form.deliverables.filter((deliverable) => deliverable.active).map((deliverable) => (
+          <div key={deliverable.id}>
+            <strong>{deliverable.title}</strong>
+            <small>{deliverable.required ? "Required" : "Optional"} · {deliverable.description || "No description"}</small>
+            <ul>
+              {deliverable.evidenceRequirements.map((requirement) => (
+                <li key={requirement.id}>
+                  {requirement.label} · {requirement.kind.replaceAll("_", " ")} · {requirement.required ? "Required" : "Optional"}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+      <aside className="evidence-note">
+        <strong>Verification does not settle automatically</strong>
+        <span>Work evidence and verified blockchain conditions support review. Escrow settlement remains governed by the existing escrow lifecycle.</span>
+      </aside>
+    </WizardSection>
+  );
+}
+
+function conditionReviewLabel(mode: ConditionMode) {
+  if (mode === "external") return "External blockchain action";
+  if (mode === "both") return "Work / delivery and external blockchain action";
+  return "Work / delivery";
+}
+
+function toConditionUnits(value: string, decimals: string) {
+  try {
+    return parseUnits(value || "0", Number(decimals)).toString();
+  } catch {
+    return "";
+  }
+}

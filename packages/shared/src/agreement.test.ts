@@ -1,9 +1,12 @@
 import { AbiCoder, ZeroAddress, id, keccak256 } from "ethers";
 import { describe, expect, it } from "vitest";
 import {
+  BLOCKCHAIN_CONDITION_DISABLED_EVIDENCE_TYPE,
   computeAgreementCommitment,
   computeEvidencePolicyCommitment,
   evidencePolicySchema,
+  externalBlockchainConditionFromPolicy,
+  externalBlockchainConditionSchema,
   validateAgreementDraft,
   type AgreementDraft,
   type EvidencePolicy,
@@ -151,5 +154,59 @@ describe("canonical agreement commitments", () => {
     expect(
       computeAgreementCommitment({ ...draft, agreementNonce: id("other") }),
     ).not.toBe(base);
+  });
+
+  it("maps external blockchain conditions into the existing policy commitment", () => {
+    const externalPolicy: EvidencePolicy = {
+      ...policy,
+      assetKind: "erc20",
+      expectedSourceContract: arbitrator,
+      expectedAsset: arbitrator,
+      amountRule: "minimum",
+      amount: "100000000",
+      calldataSelector: "0xa9059cbb",
+      requireTransferEvent: true,
+    };
+    const condition = externalBlockchainConditionFromPolicy(externalPolicy);
+    expect(externalBlockchainConditionSchema.safeParse(condition).success).toBe(true);
+    expect(condition).toEqual({
+      kind: "external_blockchain_action",
+      sourceChainKey: 1,
+      assetType: "erc20",
+      tokenContract: arbitrator,
+      expectedSender: buyer,
+      expectedRecipient: seller,
+      amount: "100000000",
+      amountRule: "minimum",
+      requireSuccess: true,
+    });
+
+    const basePolicyCommitment = computeEvidencePolicyCommitment(externalPolicy);
+    const baseAgreementCommitment = computeAgreementCommitment({
+      ...draft,
+      policy: externalPolicy,
+    });
+    const variants = [
+      { ...externalPolicy, sourceChainKey: 2 },
+      { ...externalPolicy, expectedAsset: buyer, expectedSourceContract: buyer },
+      { ...externalPolicy, expectedSender: seller },
+      { ...externalPolicy, expectedRecipient: buyer },
+      { ...externalPolicy, amount: "100000001" },
+      { ...externalPolicy, amountRule: "exact" as const },
+    ];
+    expect(
+      variants.every(
+        (variant) =>
+          computeEvidencePolicyCommitment(variant) !== basePolicyCommitment &&
+          computeAgreementCommitment({ ...draft, policy: variant }) !==
+            baseAgreementCommitment,
+      ),
+    ).toBe(true);
+    expect(
+      externalBlockchainConditionFromPolicy({
+        ...policy,
+        evidenceType: BLOCKCHAIN_CONDITION_DISABLED_EVIDENCE_TYPE,
+      }),
+    ).toBeUndefined();
   });
 });

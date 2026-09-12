@@ -12,7 +12,7 @@ describe("agreement wizard flow", () => {
       "Payment",
       "Deliverables",
       "Evidence Requirements",
-      "Optional Blockchain Verification",
+      "Agreement Conditions",
       "Review",
       "Deploy & Fund",
     ]);

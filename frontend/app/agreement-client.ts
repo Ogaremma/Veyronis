@@ -2,6 +2,8 @@ import type {
   AgreementDetails,
   AgreementDraft,
   AgreementMetadata,
+  AgreementConditionDetails,
+  AgreementConditionVerification,
   WorkEvidenceReview,
   WorkEvidenceSubmission,
   WorkEvidenceSubmissionInput,
@@ -21,6 +23,11 @@ export interface AgreementCreationClient {
     submissionId: string,
     review: WorkEvidenceReview,
   ): Promise<WorkEvidenceSubmission>;
+  getAgreementCondition(id: string): Promise<AgreementConditionDetails>;
+  verifyAgreementCondition(
+    id: string,
+    transactionHash: string,
+  ): Promise<AgreementConditionVerification>;
 }
 
 async function agreementRequestErrorMessage(response: Response): Promise<string> {
@@ -103,6 +110,25 @@ export class HttpAgreementCreationClient implements AgreementCreationClient {
     return this.request<WorkEvidenceSubmission>(
       `/agreements/${id}/work-evidence/${submissionId}/review`,
       { method: "POST", body: JSON.stringify(review) },
+    );
+  }
+
+  async getAgreementCondition(
+    id: string,
+  ): Promise<AgreementConditionDetails> {
+    return this.request<AgreementConditionDetails>(
+      `/agreements/${id}/condition`,
+      { method: "GET" },
+    );
+  }
+
+  async verifyAgreementCondition(
+    id: string,
+    transactionHash: string,
+  ): Promise<AgreementConditionVerification> {
+    return this.request<AgreementConditionVerification>(
+      `/agreements/${id}/condition/verify`,
+      { method: "POST", body: JSON.stringify(transactionHash) },
     );
   }
 
