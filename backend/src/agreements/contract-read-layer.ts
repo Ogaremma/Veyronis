@@ -12,6 +12,7 @@ export const escrowAbi = [
   "function agreementCommitment() view returns (bytes32)",
   "function evidencePolicyCommitment() view returns (bytes32)",
   "function evidenceRegistry() view returns (address)",
+  "function directConditionSettlement() view returns (bool)",
   "function state() view returns (uint8)",
   "function depositedAmount() view returns (uint256)",
   "function activeEvidenceCommitment() view returns (bytes32)",
@@ -25,6 +26,8 @@ export const escrowAbi = [
   "function openDispute(bytes32)",
   "function resolveDispute(uint8)",
   "function withdraw()",
+  "function recordVerifiedCondition(bytes32,bytes32)",
+  "function settleVerifiedCondition(bytes32,bytes32)",
   "event Deposited(uint256 amount)",
   "event DeliveryConfirmed()",
   "event RefundRequested(bytes32 indexed evidenceCommitment)",
@@ -35,6 +38,8 @@ export const escrowAbi = [
   "event WithdrawalCredited(address indexed recipient,uint256 amount)",
   "event Withdrawn(address indexed recipient,uint256 amount)",
   "event VerifiedEvidenceRecorded(bytes32 indexed claimId,bytes32 indexed evidenceCommitment)",
+  "event VerifiedConditionRecorded(bytes32 indexed claimId,bytes32 indexed evidenceCommitment)",
+  "event VerifiedConditionSettled(bytes32 indexed claimId,bytes32 indexed evidenceCommitment)",
 ] as const;
 const registryAbi = [
   "event VerifiedClaimAccepted(bytes32 indexed claimId,address indexed escrow,bytes32 indexed evidenceCommitment,bytes32 sourceEvidenceKey)",
@@ -133,26 +138,25 @@ export class EthersAgreementContractReader implements AgreementContractReader {
       claim,
       withdrawal,
       logs,
-    ] =
-      await Promise.all([
-        contract.getFunction("buyer")(),
-        contract.getFunction("seller")(),
-        contract.getFunction("arbitrator")(),
-        contract.getFunction("requiredAmount")(),
-        contract.getFunction("agreementCommitment")(),
-        contract.getFunction("evidencePolicyCommitment")(),
-        contract.getFunction("evidenceRegistry")(),
-        contract.getFunction("state")(),
-        contract.getFunction("depositedAmount")(),
-        contract.getFunction("activeEvidenceCommitment")(),
-        contract.getFunction("verifiedClaimId")(),
-        contract.getFunction("withdrawals")(participant),
-        this.provider.getLogs({
-          address,
-          fromBlock: Number(fromBlock),
-          toBlock: blockNumber,
-        }),
-      ]);
+    ] = await Promise.all([
+      contract.getFunction("buyer")(),
+      contract.getFunction("seller")(),
+      contract.getFunction("arbitrator")(),
+      contract.getFunction("requiredAmount")(),
+      contract.getFunction("agreementCommitment")(),
+      contract.getFunction("evidencePolicyCommitment")(),
+      contract.getFunction("evidenceRegistry")(),
+      contract.getFunction("state")(),
+      contract.getFunction("depositedAmount")(),
+      contract.getFunction("activeEvidenceCommitment")(),
+      contract.getFunction("verifiedClaimId")(),
+      contract.getFunction("withdrawals")(participant),
+      this.provider.getLogs({
+        address,
+        fromBlock: Number(fromBlock),
+        toBlock: blockNumber,
+      }),
+    ]);
     const registryLogs = await this.provider.getLogs({
       address: String(evidenceRegistry),
       topics: [
@@ -169,16 +173,26 @@ export class EthersAgreementContractReader implements AgreementContractReader {
     );
     const transactionSenders = new Map<string, string>();
     const blockTimestamps = new Map<number, string>();
-    await Promise.all([
-      ...new Set(allLogs.map((log) => log.transactionHash)),
-    ].map(async (hash) => {
-      const transaction = await this.provider.getTransaction(hash);
-      if (transaction) transactionSenders.set(hash, transaction.from);
-    }));
-    await Promise.all([...new Set(allLogs.map((log) => log.blockNumber))].map(async (number) => {
-      const block = await this.provider.getBlock(number);
-      if (block) blockTimestamps.set(number, new Date(block.timestamp * 1000).toISOString());
-    }));
+    await Promise.all(
+      [...new Set(allLogs.map((log) => log.transactionHash))].map(
+        async (hash) => {
+          const transaction = await this.provider.getTransaction(hash);
+          if (transaction) transactionSenders.set(hash, transaction.from);
+        },
+      ),
+    );
+    await Promise.all(
+      [...new Set(allLogs.map((log) => log.blockNumber))].map(
+        async (number) => {
+          const block = await this.provider.getBlock(number);
+          if (block)
+            blockTimestamps.set(
+              number,
+              new Date(block.timestamp * 1000).toISOString(),
+            );
+        },
+      ),
+    );
     const timeline = allLogs.flatMap((log) => {
       try {
         const parsed =
@@ -204,6 +218,10 @@ export class EthersAgreementContractReader implements AgreementContractReader {
         )
           event.evidenceCommitment = String(parsed.args[0]);
         if (parsed.name === "VerifiedEvidenceRecorded") {
+          event.claimId = String(parsed.args[0]);
+          event.evidenceCommitment = String(parsed.args[1]);
+        }
+        if (parsed.name === "VerifiedConditionSettled") {
           event.claimId = String(parsed.args[0]);
           event.evidenceCommitment = String(parsed.args[1]);
         }

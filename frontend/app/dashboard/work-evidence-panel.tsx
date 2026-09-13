@@ -16,7 +16,10 @@ export function WorkEvidencePanel({
   baseUrl: string;
   onSubmissionsChange?: (submissions: WorkEvidenceSubmission[]) => void;
 }) {
-  const client = useMemo(() => new HttpAgreementCreationClient(baseUrl), [baseUrl]);
+  const client = useMemo(
+    () => new HttpAgreementCreationClient(baseUrl),
+    [baseUrl],
+  );
   const [submissions, setSubmissions] = useState<WorkEvidenceSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -35,6 +38,10 @@ export function WorkEvidencePanel({
           })),
         ),
     [detail.metadata.deliverables],
+  );
+  const currentSubmissions = useMemo(
+    () => currentWorkEvidenceSubmissions(submissions),
+    [submissions],
   );
 
   const load = useCallback(async () => {
@@ -76,14 +83,15 @@ export function WorkEvidencePanel({
       setValue("");
       await load();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to submit work evidence.");
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Unable to submit work evidence.",
+      );
     }
   }
 
-  async function review(
-    submissionId: string,
-    status: "accepted" | "rejected",
-  ) {
+  async function review(submissionId: string, status: "accepted" | "rejected") {
     setError("");
     try {
       await client.reviewWorkEvidence(
@@ -96,27 +104,41 @@ export function WorkEvidencePanel({
       setReviewNote("");
       await load();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to review work evidence.");
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Unable to review work evidence.",
+      );
     }
   }
 
   if (!hasWorkEvidenceRequirements(detail)) return null;
 
-  const selectedRequirement = requirements.find(requirement => requirement.id === requirementId);
+  const selectedRequirement = requirements.find(
+    (requirement) => requirement.id === requirementId,
+  );
 
   return (
     <section className="dash-panel work-evidence-panel">
       <span className="dash-eyebrow">DELIVERY & WORK EVIDENCE</span>
       <h2>Application-level evidence</h2>
       <p className="dash-muted">
-        Buyers and arbitrators review this evidence manually. Attestcoin/Creditcoin is not used to verify photographs, files, websites, or GitHub work.
+        Buyers and arbitrators review this evidence manually.
+        Attestcoin/Creditcoin is not used to verify photographs, files,
+        websites, or GitHub work.
       </p>
-      {error && <p className="dash-error" role="alert">{error}</p>}
+      {error && (
+        <p className="dash-error" role="alert">
+          {error}
+        </p>
+      )}
       <div className="work-evidence-layout">
         <div>
           <h3>Requirements</h3>
           {requirements.length === 0 ? (
-            <p className="dash-muted">No delivery evidence requirements were defined.</p>
+            <p className="dash-muted">
+              No delivery evidence requirements were defined.
+            </p>
           ) : (
             requirements.map((requirement) => (
               <div key={requirement.id} className="requirement-list-item">
@@ -134,14 +156,15 @@ export function WorkEvidencePanel({
           <h3>Submissions</h3>
           {loading ? (
             <p className="dash-muted">Loading work evidence...</p>
-          ) : submissions.length === 0 ? (
+          ) : currentSubmissions.length === 0 ? (
             <p className="dash-muted">No work evidence has been submitted.</p>
           ) : (
-            submissions.map((submission) => (
+            currentSubmissions.map((submission) => (
               <article key={submission.id} className="submission-item">
                 <strong>
-                  {requirements.find((item) => item.id === submission.requirementId)
-                    ?.label ?? "Evidence submission"}
+                  {requirements.find(
+                    (item) => item.id === submission.requirementId,
+                  )?.label ?? "Evidence submission"}
                 </strong>
                 <p className="dash-mono">{submission.value}</p>
                 <small>
@@ -151,10 +174,16 @@ export function WorkEvidencePanel({
                 {(detail.role === "buyer" || detail.role === "arbitrator") &&
                   submission.status === "submitted" && (
                     <div className="dash-actions">
-                      <button className="dash-primary" onClick={() => void review(submission.id, "accepted")}>
+                      <button
+                        className="dash-primary"
+                        onClick={() => void review(submission.id, "accepted")}
+                      >
                         Accept
                       </button>
-                      <button className="dash-action" onClick={() => void review(submission.id, "rejected")}>
+                      <button
+                        className="dash-action"
+                        onClick={() => void review(submission.id, "rejected")}
+                      >
                         Reject
                       </button>
                     </div>
@@ -175,7 +204,8 @@ export function WorkEvidencePanel({
             >
               {requirements.map((requirement) => (
                 <option key={requirement.id} value={requirement.id}>
-                  {requirement.label || requirement.kind} · {requirement.deliverableTitle}
+                  {requirement.label || requirement.kind} ·{" "}
+                  {requirement.deliverableTitle}
                 </option>
               ))}
             </select>
@@ -196,7 +226,8 @@ export function WorkEvidencePanel({
             Submit work evidence
           </button>
           <p className="dash-muted">
-            Submitting evidence does not release, refund, or resolve escrow funds.
+            Submitting evidence does not release, refund, or resolve escrow
+            funds.
           </p>
         </div>
       )}
@@ -210,13 +241,36 @@ export function WorkEvidencePanel({
           />
         </label>
       )}
+      <p className="dash-muted current-evidence-note">
+        Shows the current submission for each requirement. Earlier submissions
+        remain retained in the historical database record.
+      </p>
     </section>
   );
 }
 
+export function currentWorkEvidenceSubmissions(
+  submissions: readonly WorkEvidenceSubmission[],
+): WorkEvidenceSubmission[] {
+  const latest = new Map<string, WorkEvidenceSubmission>();
+  for (const submission of [...submissions].sort((left, right) => {
+    const leftTime = Date.parse(left.submittedAt);
+    const rightTime = Date.parse(right.submittedAt);
+    return leftTime - rightTime || left.id.localeCompare(right.id);
+  })) {
+    latest.set(submission.requirementId, submission);
+  }
+  return [...latest.values()].sort((left, right) => {
+    const leftTime = Date.parse(left.submittedAt);
+    const rightTime = Date.parse(right.submittedAt);
+    return leftTime - rightTime || left.id.localeCompare(right.id);
+  });
+}
+
 export function hasWorkEvidenceRequirements(detail: AgreementDetails) {
   return (detail.metadata.deliverables ?? []).some(
-    deliverable => deliverable.active && deliverable.evidenceRequirements.length > 0,
+    (deliverable) =>
+      deliverable.active && deliverable.evidenceRequirements.length > 0,
   );
 }
 
@@ -232,6 +286,7 @@ function evidenceValuePlaceholder(kind: string | undefined) {
   if (kind === "TEXT") return "Describe or paste the requested evidence";
   if (kind === "TRANSACTION_HASH") return "0x...";
   if (kind === "GITHUB_COMMIT") return "https://github.com/...";
-  if (kind === "GITHUB_REPOSITORY") return "https://github.com/organization/repository";
+  if (kind === "GITHUB_REPOSITORY")
+    return "https://github.com/organization/repository";
   return "https://example.com/evidence";
 }

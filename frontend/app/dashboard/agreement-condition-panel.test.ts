@@ -4,6 +4,7 @@ import {
   canSubmitCondition,
   conditionStatusLabel,
   failureLabel,
+  isVerifiedOnChain,
 } from "./agreement-condition-panel";
 
 function verification(status: AgreementConditionVerification["status"]) {
@@ -41,7 +42,9 @@ describe("agreement condition panel", () => {
     expect(canSubmitCondition("seller", undefined)).toBe(true);
     expect(canSubmitCondition("buyer", undefined)).toBe(false);
     expect(canSubmitCondition("arbitrator", undefined)).toBe(false);
-    expect(canSubmitCondition("seller", verification("verification_failed"))).toBe(true);
+    expect(
+      canSubmitCondition("seller", verification("verification_failed")),
+    ).toBe(true);
     expect(canSubmitCondition("seller", verification("verified"))).toBe(false);
   });
 
@@ -53,5 +56,35 @@ describe("agreement condition panel", () => {
     expect(failureLabel("WRONG_AMOUNT")).toContain("amount");
     expect(failureLabel("WRONG_EVENT")).toContain("did not succeed");
     expect(failureLabel(undefined)).not.toContain("0x");
+  });
+
+  it("requires an authoritative matching on-chain claim before verified state", () => {
+    const detail = {
+      chain: { state: "Complete", verifiedClaimId: "0x" + "3".repeat(64) },
+    };
+    const verified = {
+      ...verification("verified"),
+      verifiedClaimId: "0x" + "3".repeat(64),
+    };
+    expect(isVerifiedOnChain(detail as never, verified)).toBe(true);
+    expect(
+      isVerifiedOnChain(
+        {
+          chain: { state: "Complete", verifiedClaimId: "0x" + "4".repeat(64) },
+        } as never,
+        verified,
+      ),
+    ).toBe(false);
+    expect(
+      isVerifiedOnChain(
+        {
+          chain: {
+            state: "AwaitingDelivery",
+            verifiedClaimId: "0x" + "3".repeat(64),
+          },
+        } as never,
+        verified,
+      ),
+    ).toBe(true);
   });
 });

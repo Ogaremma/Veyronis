@@ -1,4 +1,4 @@
-import { ZeroAddress, id } from "ethers";
+import { ZeroAddress, ZeroHash, id } from "ethers";
 import { describe, expect, it } from "vitest";
 import type {
   AttestcoinProofRequest,
@@ -101,6 +101,7 @@ class FakeEscrowReader implements EscrowContextReader {
     agreementCommitment,
     evidencePolicyCommitment: policyCommitment,
     activeEvidenceCommitment: evidenceCommitment,
+    directConditionSettlement: false,
     buyer,
     seller,
     state: 3,
@@ -110,9 +111,19 @@ class FakeEscrowReader implements EscrowContextReader {
   }
 
   verifiedClaimId = acceptedClaimId;
+  settlement = {
+    state: 4,
+    verifiedClaimId: acceptedClaimId,
+    activeEvidenceCommitment: evidenceCommitment,
+    sellerWithdrawal: 100n,
+  };
 
   async readVerifiedClaimId() {
     return this.verifiedClaimId;
+  }
+
+  async readSettlementContext() {
+    return this.settlement;
   }
 }
 
@@ -121,6 +132,8 @@ class FakeRegistry implements EvidenceClaimRegistryGateway {
   boundEscrow = ZeroAddress;
   rejection: Error | undefined;
   submitted: VerifiedEvidenceClaim | undefined;
+  conditionSubmitted: VerifiedEvidenceClaim | undefined;
+  prerequisiteSubmitted: VerifiedEvidenceClaim | undefined;
   async isClaimConsumed() {
     return this.consumed;
   }
@@ -130,6 +143,22 @@ class FakeRegistry implements EvidenceClaimRegistryGateway {
   async submitVerifiedClaim(claim: VerifiedEvidenceClaim) {
     if (this.rejection) throw this.rejection;
     this.submitted = claim;
+    return {
+      claimId: acceptedClaimId,
+      transactionHash: id("registry transaction"),
+    };
+  }
+  async submitVerifiedConditionClaim(claim: VerifiedEvidenceClaim) {
+    if (this.rejection) throw this.rejection;
+    this.conditionSubmitted = claim;
+    return {
+      claimId: acceptedClaimId,
+      transactionHash: id("registry transaction"),
+    };
+  }
+  async submitVerifiedPrerequisiteClaim(claim: VerifiedEvidenceClaim) {
+    if (this.rejection) throw this.rejection;
+    this.prerequisiteSubmitted = claim;
     return {
       claimId: acceptedClaimId,
       transactionHash: id("registry transaction"),
@@ -193,7 +222,64 @@ describe("AttestcoinVerifier", () => {
     const { verifier, registry } = setup();
     const result = await verifier.verifyAndSubmit(request);
     expect(result.ok).toBe(true);
+    if (result.ok) expect(result.verifiedAmount).toBe("100");
     expect(registry.submitted?.evidencePolicyCommitment).toBe(policyCommitment);
+  });
+
+  it("submits funded conditions to the settlement registry path", async () => {
+    const { verifier, escrow, registry } = setup();
+    escrow.context.state = 1;
+    escrow.context.activeEvidenceCommitment = ZeroHash;
+    escrow.context.directConditionSettlement = true;
+
+    const result = await verifier.verifyAndSubmit({
+      ...request,
+      conditionSubmission: "direct_settlement",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(registry.submitted).toBeUndefined();
+    expect(registry.conditionSubmitted?.evidenceCommitment).toBe(
+      evidenceCommitment,
+    );
+  });
+
+  it("records hybrid conditions without settling them", async () => {
+    const { verifier, escrow, registry } = setup();
+    escrow.context.state = 1;
+    escrow.context.activeEvidenceCommitment = ZeroHash;
+    escrow.context.directConditionSettlement = false;
+    escrow.settlement = {
+      state: 1,
+      verifiedClaimId: acceptedClaimId,
+      activeEvidenceCommitment: ZeroHash,
+      sellerWithdrawal: 0n,
+    };
+
+    const result = await verifier.verifyAndSubmit({
+      ...request,
+      conditionSubmission: "prerequisite_record",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(registry.conditionSubmitted).toBeUndefined();
+    expect(registry.prerequisiteSubmitted?.evidenceCommitment).toBe(
+      evidenceCommitment,
+    );
+  });
+
+  it("rejects a condition submission that did not credit the seller", async () => {
+    const { verifier, escrow, registry } = setup();
+    escrow.context.state = 1;
+    escrow.context.activeEvidenceCommitment = ZeroHash;
+    escrow.context.directConditionSettlement = true;
+    escrow.settlement.sellerWithdrawal = 0n;
+
+    await expectFailure(verifier, "REGISTRY_REJECTION", {
+      ...request,
+      conditionSubmission: "direct_settlement",
+    });
+    expect(registry.conditionSubmitted).toBeDefined();
   });
 
   it("rejects policy substitution and policy/escrow mismatch", async () => {
@@ -232,10 +318,12 @@ describe("AttestcoinVerifier", () => {
     await expectFailure(verifier, code);
   });
 
-  it("rejects non-disputed, replayed, and registry-rejected claims", async () => {
+  it("rejects invalid states, replayed, and registry-rejected claims", async () => {
     const { verifier, escrow, registry } = setup();
+    escrow.context.state = 0;
+    await expectFailure(verifier, "ESCROW_NOT_SETTLEABLE");
     escrow.context.state = 1;
-    await expectFailure(verifier, "ESCROW_NOT_DISPUTABLE");
+    await expectFailure(verifier, "ESCROW_NOT_SETTLEABLE");
     escrow.context.state = 3;
     registry.consumed = true;
     await expectFailure(verifier, "REPLAY_DETECTED");
@@ -244,7 +332,7 @@ describe("AttestcoinVerifier", () => {
     await expectFailure(verifier, "REGISTRY_REJECTION");
   });
 
-  it("never exposes or calls escrow settlement", async () => {
+  it("never calls escrow settlement directly", async () => {
     const { verifier, escrow } = setup();
     expect("resolveDispute" in escrow).toBe(false);
     expect("withdraw" in escrow).toBe(false);

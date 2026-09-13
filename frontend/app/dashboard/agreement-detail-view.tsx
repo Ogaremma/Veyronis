@@ -1,19 +1,45 @@
 import React from "react";
-import { canWithdrawEscrowFunds, type AgreementAction, type AgreementDetails, type TransactionReceiptInfo } from "@veyronis/shared";
+import {
+  agreementLifecycleMode,
+  canWithdrawEscrowFunds,
+  type AgreementAction,
+  type AgreementDetails,
+  type TransactionReceiptInfo,
+} from "@veyronis/shared";
 import { formatEther, ZeroHash } from "ethers";
 import { AgreementLifecycle } from "./agreement-lifecycle";
 import { sellerProgressSteps } from "./seller-progress";
-import type { AgreementConditionVerification, WorkEvidenceSubmission } from "@veyronis/shared";
+import type {
+  AgreementConditionVerification,
+  WorkEvidenceSubmission,
+} from "@veyronis/shared";
 import { getNetworkName } from "../network-label";
 import { requiredTransactionChainId } from "../transaction-network-guard";
+import {
+  agreementDisplayStatus,
+  agreementStatusTone,
+} from "../escrow/agreement-status";
+import { StatusBadge } from "../ui/glass";
 
 const labels: Record<AgreementAction, string> = {
-  deposit: "Fund Contract", cancel: "Cancel before payment", confirmDelivery: "Confirm delivery",
-  requestRefund: "Request refund", approveRefund: "Approve refund", openDispute: "Open dispute",
-  resolveRelease: "Resolve for seller", resolveRefund: "Resolve for buyer", withdraw: "Withdraw",
+  deposit: "Fund Contract",
+  cancel: "Cancel before payment",
+  confirmDelivery: "Confirm delivery",
+  requestRefund: "Request refund",
+  approveRefund: "Approve refund",
+  openDispute: "Open dispute",
+  resolveRelease: "Resolve for seller",
+  resolveRefund: "Resolve for buyer",
+  withdraw: "Withdraw",
 };
 
-export function AgreementDetailView({ detail, transaction, execute, workEvidenceSubmissions, conditionVerification }: {
+export function AgreementDetailView({
+  detail,
+  transaction,
+  execute,
+  workEvidenceSubmissions,
+  conditionVerification,
+}: {
   detail: AgreementDetails;
   transaction: TransactionReceiptInfo;
   execute: (action: AgreementAction) => void;
@@ -21,70 +47,263 @@ export function AgreementDetailView({ detail, transaction, execute, workEvidence
   conditionVerification?: AgreementConditionVerification | undefined;
 }) {
   const chain = detail.chain;
-  if (!chain) return <p className="dash-muted">This agreement has not been deployed.</p>;
-  const busy = !["IDLE", "COMPLETE", "USER_REJECTED", "TRANSACTION_REVERTED", "RPC_ERROR", "RECONCILIATION_FAILED"].includes(transaction.status);
-  const withdrawable = canWithdrawEscrowFunds(detail.role, chain.state, chain.withdrawalAmount);
-  const visibleActions = detail.actions.filter(action => action !== "withdraw" || withdrawable);
+  if (!chain)
+    return <p className="dash-muted">This agreement has not been deployed.</p>;
+  const busy = ![
+    "IDLE",
+    "COMPLETE",
+    "USER_REJECTED",
+    "TRANSACTION_REVERTED",
+    "RPC_ERROR",
+    "RECONCILIATION_FAILED",
+  ].includes(transaction.status);
+  const withdrawable = canWithdrawEscrowFunds(
+    detail.role,
+    chain.state,
+    chain.withdrawalAmount,
+  );
+  const lifecycle = agreementLifecycleMode(detail.metadata);
+  const visibleActions = detail.actions.filter((action) => {
+    if (
+      lifecycle === "blockchain_condition_only" &&
+      action === "confirmDelivery"
+    ) {
+      return false;
+    }
+    return action !== "withdraw" || withdrawable;
+  });
   const primary = visibleActions[0];
-  const progressSteps = detail.role === "seller"
-    ? sellerProgressSteps(detail, workEvidenceSubmissions, conditionVerification)
-    : undefined;
-  return <>
-    {detail.reconciliation?.status === "METADATA_STALE" && <aside className="reconciliation-note">
-      Blockchain state is authoritative. Metadata is being synchronized.
-    </aside>}
-    <section className="detail-section">
-      <div className="section-heading"><span className="dash-eyebrow">AGREEMENT OVERVIEW</span><h2>Contract terms and participants</h2></div>
-      <dl className="overview-grid">
-        <dt>Escrow address</dt><dd className="dash-mono">{chain.escrowAddress}</dd>
-        <dt>Buyer</dt><dd className="dash-mono">{chain.buyer}</dd>
-        <dt>Seller</dt><dd className="dash-mono">{chain.seller}</dd>
-        <dt>Arbitrator</dt><dd className="dash-mono">{chain.arbitrator}</dd>
-        <dt>Required amount</dt><dd>{formatEther(chain.requiredAmount)} ETH</dd>
-        <dt>Current status</dt><dd><span className="dash-status">{chain.state}</span></dd>
-        <dt>Network</dt><dd>{getNetworkName(requiredTransactionChainId())}</dd>
-        <dt>Agreement commitment</dt><dd className="dash-mono">{chain.agreementCommitment}</dd>
-        <dt>Evidence policy commitment</dt><dd className="dash-mono">{chain.evidencePolicyCommitment}</dd>
-      </dl>
-    </section>
-    {detail.role === "seller" && <section className="detail-section">
-      <div className="section-heading"><span className="dash-eyebrow">SELLER PROGRESS</span><h2>Required order of operations</h2></div>
-      <ol className="seller-flow">
-        {progressSteps?.map(step => <li key={step.label} className={step.tone}><strong>{step.label}</strong><span>{step.status}</span></li>)}
-      </ol>
-      <p className="dash-muted">Progress reflects agreement requirements, verification status, and authoritative contract state. Proof verification is advisory input and does not automatically release funds.</p>
-    </section>}
-    <section className="detail-section"><div className="section-heading"><span className="dash-eyebrow">LIFECYCLE</span><h2>Authoritative escrow state</h2></div><AgreementLifecycle state={chain.state} refundRequested={detail.timeline.some(event => event.name === "RefundRequested")} disputed={detail.timeline.some(event => event.name === "DisputeOpened")} /></section>
-    <section className="detail-grid">
-      <div className="dash-panel action-panel"><span className="dash-eyebrow">AVAILABLE ACTION</span><h2>{primary ? actionLabel(primary, chain.requiredAmount, chain.withdrawalAmount) : "No action available"}</h2>
-        <div className="dash-actions">{visibleActions.map(action => <button className={action === primary ? "dash-primary" : "dash-action"} disabled={busy} key={action} onClick={() => execute(action)}>{actionLabel(action, chain.requiredAmount, chain.withdrawalAmount)}</button>)}</div>
-        {!primary && <p className="dash-muted">Your wallet has no valid action in the current on-chain state.</p>}
-      </div>
-      <div className="dash-panel receipt-panel"><span className="dash-eyebrow">TRANSACTION STATUS</span><h2>{transaction.status.replaceAll("_", " ")}</h2>
-        {transaction.hash && <p className="dash-mono">{transaction.hash}</p>}
-        {transaction.blockNumber && <p>Confirmed in block {transaction.blockNumber}</p>}
-        {transaction.explorerUrl && <a href={transaction.explorerUrl} target="_blank" rel="noreferrer">View transaction</a>}
-        {transaction.error && <p className="dash-error">{transaction.error}</p>}
-        {transaction.message && <p className="dash-muted">{transaction.message}</p>}
-      </div>
-    </section>
-    <section className="detail-grid">
-      <div className="dash-panel"><span className="dash-eyebrow">EVIDENCE</span><h2>{chain.verifiedClaimId !== ZeroHash ? "VERIFIED ON-CHAIN EVIDENCE" : "ADVISORY EVIDENCE"}</h2>
-        <p className="dash-muted">Evidence informs the agreement and arbitrator. It does not automatically resolve a dispute or move funds.</p>
-        <dl><dt>Active commitment</dt><dd className="dash-mono">{chain.activeEvidenceCommitment}</dd><dt>Verified claim</dt><dd className="dash-mono">{chain.verifiedClaimId}</dd></dl>
-      </div>
-      {withdrawable && <div className="dash-panel"><span className="dash-eyebrow">WITHDRAWAL</span><h2>{formatEther(chain.withdrawalAmount)} ETH available</h2><p className="dash-mono">{detail.role === "buyer" ? chain.buyer : detail.role === "seller" ? chain.seller : chain.arbitrator}</p>
-        <button className="dash-primary" disabled={busy} onClick={() => execute("withdraw")}>Withdraw {formatEther(chain.withdrawalAmount)} ETH</button>
-      </div>}
-    </section>
-    <section className="dash-panel dash-timeline"><span className="dash-eyebrow">TRANSACTION ACTIVITY</span><h2>Contract and evidence events</h2>
-      {detail.timeline.length === 0 ? <p className="dash-muted">No contract events indexed yet.</p> : detail.timeline.map(event => <div className="timeline-event" key={`${event.transactionHash}-${event.logIndex}`}><span className="timeline-dot"/><div><strong>{event.name}</strong>{event.advisory && <span className="advisory">Verified on-chain evidence</span>}<p className="dash-muted">Block {event.blockNumber}{event.timestamp ? ` / ${new Date(event.timestamp).toLocaleString()}` : ""}</p><p className="dash-mono">{event.actor ?? "Participant unavailable"} / {event.transactionHash}</p></div></div>)}
-    </section>
-  </>;
+  const progressSteps =
+    detail.role === "seller"
+      ? sellerProgressSteps(
+          detail,
+          workEvidenceSubmissions,
+          conditionVerification,
+        )
+      : undefined;
+  return (
+    <>
+      {detail.reconciliation?.status === "METADATA_STALE" && (
+        <aside className="reconciliation-note">
+          Blockchain state is authoritative. Metadata is being synchronized.
+        </aside>
+      )}
+      <section className="detail-section">
+        <div className="section-heading">
+          <span className="dash-eyebrow">AGREEMENT OVERVIEW</span>
+          <h2>Contract terms and participants</h2>
+        </div>
+        <dl className="overview-grid">
+          <dt>Escrow address</dt>
+          <dd className="dash-mono">{chain.escrowAddress}</dd>
+          <dt>Buyer</dt>
+          <dd className="dash-mono">{chain.buyer}</dd>
+          <dt>Seller</dt>
+          <dd className="dash-mono">{chain.seller}</dd>
+          <dt>Arbitrator</dt>
+          <dd className="dash-mono">{chain.arbitrator}</dd>
+          <dt>Required amount</dt>
+          <dd>{formatEther(chain.requiredAmount)} ETH</dd>
+          <dt>Current status</dt>
+          <dd>
+            <StatusBadge
+              tone={agreementStatusTone(
+                agreementDisplayStatus(detail, conditionVerification),
+              )}
+            >
+              {agreementDisplayStatus(detail, conditionVerification)}
+            </StatusBadge>
+          </dd>
+          <dt>Network</dt>
+          <dd>{getNetworkName(requiredTransactionChainId())}</dd>
+          <dt>Condition</dt>
+          <dd>
+            {lifecycle === "blockchain_condition_only"
+              ? "External blockchain action"
+              : lifecycle === "hybrid"
+                ? "Blockchain + work evidence"
+                : "Application work evidence"}
+          </dd>
+          <dt>Agreement commitment</dt>
+          <dd className="dash-mono">{chain.agreementCommitment}</dd>
+          <dt>Evidence policy commitment</dt>
+          <dd className="dash-mono">{chain.evidencePolicyCommitment}</dd>
+        </dl>
+      </section>
+      {detail.role === "seller" && (
+        <section className="detail-section">
+          <div className="section-heading">
+            <span className="dash-eyebrow">SELLER PROGRESS</span>
+            <h2>Required order of operations</h2>
+          </div>
+          <ol className="seller-flow">
+            {progressSteps?.map((step) => (
+              <li key={step.label} className={step.tone}>
+                <strong>{step.label}</strong>
+                <span>{step.status}</span>
+              </li>
+            ))}
+          </ol>
+          <p className="dash-muted">
+            Progress reflects configured requirements, verification status, and
+            authoritative contract state. Seller withdrawal appears only after
+            the escrow contract credits the seller.
+          </p>
+        </section>
+      )}
+      <section className="detail-section">
+        <div className="section-heading">
+          <span className="dash-eyebrow">LIFECYCLE</span>
+          <h2>Authoritative escrow state</h2>
+        </div>
+        <AgreementLifecycle
+          state={chain.state}
+          refundRequested={detail.timeline.some(
+            (event) => event.name === "RefundRequested",
+          )}
+          disputed={detail.timeline.some(
+            (event) => event.name === "DisputeOpened",
+          )}
+        />
+      </section>
+      <section className="detail-grid">
+        <div className="dash-panel action-panel">
+          <span className="dash-eyebrow">AVAILABLE ACTION</span>
+          <h2>
+            {primary
+              ? actionLabel(
+                  primary,
+                  chain.requiredAmount,
+                  chain.withdrawalAmount,
+                )
+              : "No action available"}
+          </h2>
+          <div className="dash-actions">
+            {visibleActions.map((action) => (
+              <button
+                className={action === primary ? "dash-primary" : "dash-action"}
+                disabled={busy}
+                key={action}
+                onClick={() => execute(action)}
+              >
+                {actionLabel(
+                  action,
+                  chain.requiredAmount,
+                  chain.withdrawalAmount,
+                )}
+              </button>
+            ))}
+          </div>
+          {!primary && (
+            <p className="dash-muted">
+              Your wallet has no valid action in the current on-chain state.
+            </p>
+          )}
+        </div>
+        <div className="dash-panel receipt-panel">
+          <span className="dash-eyebrow">TRANSACTION STATUS</span>
+          <h2>{transaction.status.replaceAll("_", " ")}</h2>
+          {transaction.hash && <p className="dash-mono">{transaction.hash}</p>}
+          {transaction.blockNumber && (
+            <p>Confirmed in block {transaction.blockNumber}</p>
+          )}
+          {transaction.explorerUrl && (
+            <a href={transaction.explorerUrl} target="_blank" rel="noreferrer">
+              View transaction
+            </a>
+          )}
+          {transaction.error && (
+            <p className="dash-error">{transaction.error}</p>
+          )}
+          {transaction.message && (
+            <p className="dash-muted">{transaction.message}</p>
+          )}
+        </div>
+      </section>
+      <section className="detail-grid">
+        <div className="dash-panel">
+          <span className="dash-eyebrow">EVIDENCE</span>
+          <h2>
+            {chain.verifiedClaimId !== ZeroHash
+              ? "VERIFIED ON-CHAIN EVIDENCE"
+              : "ADVISORY EVIDENCE"}
+          </h2>
+          <p className="dash-muted">
+            Application evidence informs buyer or arbitrator review. Verified
+            blockchain conditions settle only through the authorized verifier
+            and registry path.
+          </p>
+          <dl>
+            <dt>Active commitment</dt>
+            <dd className="dash-mono">{chain.activeEvidenceCommitment}</dd>
+            <dt>Verified claim</dt>
+            <dd className="dash-mono">{chain.verifiedClaimId}</dd>
+          </dl>
+        </div>
+        {withdrawable && (
+          <div className="dash-panel">
+            <span className="dash-eyebrow">WITHDRAWAL</span>
+            <h2>{formatEther(chain.withdrawalAmount)} ETH available</h2>
+            <p className="dash-mono">
+              {detail.role === "buyer"
+                ? chain.buyer
+                : detail.role === "seller"
+                  ? chain.seller
+                  : chain.arbitrator}
+            </p>
+            <button
+              className="dash-primary"
+              disabled={busy}
+              onClick={() => execute("withdraw")}
+            >
+              Withdraw {formatEther(chain.withdrawalAmount)} ETH
+            </button>
+          </div>
+        )}
+      </section>
+      <section className="dash-panel dash-timeline">
+        <span className="dash-eyebrow">TRANSACTION ACTIVITY</span>
+        <h2>Contract and evidence events</h2>
+        {detail.timeline.length === 0 ? (
+          <p className="dash-muted">No contract events indexed yet.</p>
+        ) : (
+          detail.timeline.map((event) => (
+            <div
+              className="timeline-event"
+              key={`${event.transactionHash}-${event.logIndex}`}
+            >
+              <span className="timeline-dot" />
+              <div>
+                <strong>{event.name}</strong>
+                {event.advisory && (
+                  <span className="advisory">Verified on-chain evidence</span>
+                )}
+                <p className="dash-muted">
+                  Block {event.blockNumber}
+                  {event.timestamp
+                    ? ` / ${new Date(event.timestamp).toLocaleString()}`
+                    : ""}
+                </p>
+                <p className="dash-mono">
+                  {event.actor ?? "Participant unavailable"} /{" "}
+                  {event.transactionHash}
+                </p>
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+    </>
+  );
 }
 
-function actionLabel(action: AgreementAction, required: string, withdrawal: string) {
-  if (action === "deposit") return `Fund Contract ? ${formatEther(required)} ETH`;
+function actionLabel(
+  action: AgreementAction,
+  required: string,
+  withdrawal: string,
+) {
+  if (action === "deposit")
+    return `Fund Contract ? ${formatEther(required)} ETH`;
   if (action === "withdraw") return `Withdraw ${formatEther(withdrawal)} ETH`;
   return labels[action];
 }

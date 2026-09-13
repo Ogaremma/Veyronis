@@ -1,6 +1,7 @@
 import { AbiCoder, ZeroAddress, id, keccak256 } from "ethers";
 import { describe, expect, it } from "vitest";
 import {
+  agreementLifecycleMode,
   BLOCKCHAIN_CONDITION_DISABLED_EVIDENCE_TYPE,
   canWithdrawEscrowFunds,
   computeAgreementCommitment,
@@ -10,6 +11,7 @@ import {
   externalBlockchainConditionSchema,
   validateAgreementDraft,
   type AgreementDraft,
+  type AgreementDeliverable,
   type EvidencePolicy,
 } from "./index.js";
 
@@ -40,6 +42,24 @@ const draft: AgreementDraft = {
   agreementNonce: id("nonce"),
   evidenceRegistry: "0x4000000000000000000000000000000000000004",
   policy,
+};
+const deliverable: AgreementDeliverable = {
+  id: "11111111-1111-4111-8111-111111111111",
+  title: "Deliverable",
+  description: "",
+  required: true,
+  active: true,
+  position: 0,
+  evidenceRequirements: [
+    {
+      id: "22222222-2222-4222-8222-222222222222",
+      label: "Delivery receipt",
+      kind: "RECEIPT",
+      required: true,
+      configuration: {},
+      position: 0,
+    },
+  ],
 };
 
 describe("canonical agreement commitments", () => {
@@ -169,7 +189,9 @@ describe("canonical agreement commitments", () => {
       requireTransferEvent: true,
     };
     const condition = externalBlockchainConditionFromPolicy(externalPolicy);
-    expect(externalBlockchainConditionSchema.safeParse(condition).success).toBe(true);
+    expect(externalBlockchainConditionSchema.safeParse(condition).success).toBe(
+      true,
+    );
     expect(condition).toEqual({
       kind: "external_blockchain_action",
       sourceChainKey: 1,
@@ -182,14 +204,19 @@ describe("canonical agreement commitments", () => {
       requireSuccess: true,
     });
 
-    const basePolicyCommitment = computeEvidencePolicyCommitment(externalPolicy);
+    const basePolicyCommitment =
+      computeEvidencePolicyCommitment(externalPolicy);
     const baseAgreementCommitment = computeAgreementCommitment({
       ...draft,
       policy: externalPolicy,
     });
     const variants = [
       { ...externalPolicy, sourceChainKey: 2 },
-      { ...externalPolicy, expectedAsset: buyer, expectedSourceContract: buyer },
+      {
+        ...externalPolicy,
+        expectedAsset: buyer,
+        expectedSourceContract: buyer,
+      },
       { ...externalPolicy, expectedSender: seller },
       { ...externalPolicy, expectedRecipient: buyer },
       { ...externalPolicy, amount: "100000001" },
@@ -214,7 +241,11 @@ describe("canonical agreement commitments", () => {
 
 describe("withdrawal eligibility", () => {
   it("requires the settled recipient role, terminal state, and positive balance", () => {
-    for (const state of ["AwaitingPayment", "AwaitingDelivery", "Disputed"] as const) {
+    for (const state of [
+      "AwaitingPayment",
+      "AwaitingDelivery",
+      "Disputed",
+    ] as const) {
       expect(canWithdrawEscrowFunds("seller", state, "100")).toBe(false);
     }
     expect(canWithdrawEscrowFunds("seller", "Complete", "100")).toBe(true);
@@ -223,5 +254,32 @@ describe("withdrawal eligibility", () => {
     expect(canWithdrawEscrowFunds("buyer", "Complete", "100")).toBe(false);
     expect(canWithdrawEscrowFunds("arbitrator", "Complete", "100")).toBe(false);
     expect(canWithdrawEscrowFunds("seller", "Complete", "0")).toBe(false);
+  });
+});
+
+describe("agreement lifecycle", () => {
+  it("classifies blockchain-only, work-evidence, and hybrid agreements", () => {
+    const disabledPolicy = {
+      ...policy,
+      evidenceType: BLOCKCHAIN_CONDITION_DISABLED_EVIDENCE_TYPE,
+    };
+    expect(agreementLifecycleMode({ policy, deliverables: [] })).toBe(
+      "blockchain_condition_only",
+    );
+    expect(
+      agreementLifecycleMode({
+        policy: disabledPolicy,
+        deliverables: [deliverable],
+      }),
+    ).toBe("application_work_evidence");
+    expect(
+      agreementLifecycleMode({ policy, deliverables: [deliverable] }),
+    ).toBe("hybrid");
+    expect(
+      agreementLifecycleMode({
+        policy: disabledPolicy,
+        deliverables: [{ ...deliverable, active: false }],
+      }),
+    ).toBe("application_work_evidence");
   });
 });

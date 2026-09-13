@@ -2,17 +2,18 @@ import { Interface, id, zeroPadValue } from "ethers";
 import { describe, expect, it, vi } from "vitest";
 import type {
   AgreementMetadata,
+  AttestcoinVerificationResult,
   AttestcoinProofRequest,
   EvidencePolicy,
+  VerifiedEvidenceClaim,
+  VerificationFailureCode,
 } from "@veyronis/shared";
 import {
   computeAgreementCommitment,
   computeEvidencePolicyCommitment,
 } from "@veyronis/shared";
-import { SourceTransactionPolicyEvaluator } from "../attestcoin/source-transaction-interpreter.js";
 import type {
-  CryptographicProofVerifier,
-  ProofVerificationResult,
+  AuthorizedConditionVerifier,
   VerifiedSourceTransaction,
 } from "../attestcoin/verifier-types.js";
 import { InMemoryAgreementRepository } from "./agreement-repository.js";
@@ -75,19 +76,37 @@ const agreement: AgreementMetadata = {
   deliverables: [],
 };
 
-class FakeProofVerifier implements CryptographicProofVerifier {
+class FakeAuthorizedVerifier implements AuthorizedConditionVerifier {
   readonly requests: AttestcoinProofRequest[] = [];
 
   constructor(
     private readonly transaction: VerifiedSourceTransaction,
-    private readonly failures: ProofVerificationResult[] = [],
+    private readonly failures: AttestcoinVerificationResult[] = [],
   ) {}
 
-  async verify(reference: AttestcoinProofRequest): Promise<ProofVerificationResult> {
+  async verifyAndSubmit(
+    reference: AttestcoinProofRequest,
+  ): Promise<AttestcoinVerificationResult> {
     this.requests.push(reference);
     const failure = this.failures.shift();
     if (failure) return failure;
-    return { ok: true, transaction: this.transaction };
+    const claim: VerifiedEvidenceClaim = {
+      escrow: reference.escrowAddress,
+      agreementCommitment: reference.agreementCommitment,
+      evidencePolicyCommitment: reference.evidencePolicyCommitment,
+      evidenceCommitment: reference.evidenceCommitment,
+      evidenceType: reference.evidenceType,
+      sourceChainKey: reference.sourceChainKey,
+      sourceTransactionHash: reference.transactionHash,
+      subject: reference.subject,
+    };
+    return {
+      ok: true,
+      claim,
+      claimId: id("accepted registry claim"),
+      transactionHash: id("registry transaction"),
+      verifiedAmount: "100000000",
+    };
   }
 }
 
@@ -126,17 +145,17 @@ function verifiedTransaction(
 
 async function setup(
   transaction = verifiedTransaction(),
-  failures: ProofVerificationResult[] = [],
+  failures: AttestcoinVerificationResult[] = [],
   verifications = new InMemoryAgreementConditionVerificationRepository(),
+  metadata: AgreementMetadata = agreement,
 ) {
   const agreements = new InMemoryAgreementRepository();
-  await agreements.createAgreement(agreement);
-  const verifier = new FakeProofVerifier(transaction, failures);
+  await agreements.createAgreement(metadata);
+  const verifier = new FakeAuthorizedVerifier(transaction, failures);
   const service = new AgreementConditionService(
     agreements,
     verifications,
     verifier,
-    new SourceTransactionPolicyEvaluator(),
   );
   return { agreements, service, verifier, verifications };
 }
@@ -170,18 +189,21 @@ describe("agreement condition service", () => {
     );
   });
 
-  it("lets only the seller submit and verifies before dispute without a registry claim", async () => {
+  it("lets only the seller trigger the authorized verifier settlement path", async () => {
     const { agreements, service, verifier } = await setup();
-    const updateDeploymentStatus = vi.spyOn(agreements, "updateDeploymentStatus");
+    const updateDeploymentStatus = vi.spyOn(
+      agreements,
+      "updateDeploymentStatus",
+    );
     const recordReconciliation = vi.spyOn(agreements, "recordReconciliation");
     const transactionHash = verifiedTransaction().sourceTransactionHash;
 
-    await expect(service.verify(agreementId, buyer, transactionHash)).rejects.toSatisfy(
-      (reason: unknown) => rejection(reason).status === 403,
-    );
-    await expect(service.verify(agreementId, unrelated, transactionHash)).rejects.toSatisfy(
-      (reason: unknown) => rejection(reason).status === 403,
-    );
+    await expect(
+      service.verify(agreementId, buyer, transactionHash),
+    ).rejects.toSatisfy((reason: unknown) => rejection(reason).status === 403);
+    await expect(
+      service.verify(agreementId, unrelated, transactionHash),
+    ).rejects.toSatisfy((reason: unknown) => rejection(reason).status === 403);
 
     const result = await service.verify(agreementId, seller, transactionHash);
     expect(result).toMatchObject({
@@ -191,7 +213,7 @@ describe("agreement condition service", () => {
       status: "verified",
       verifiedAmount: "100000000",
     });
-    expect(result.verifiedClaimId).toBeUndefined();
+    expect(result.verifiedClaimId).toBe(id("accepted registry claim"));
     expect(verifier.requests[0]).toMatchObject({
       escrowAddress: escrow,
       agreementCommitment: agreement.agreementCommitment,
@@ -200,18 +222,70 @@ describe("agreement condition service", () => {
       transactionHash,
       subject: policy.expectedSender,
       policy,
+      conditionSubmission: "direct_settlement",
     });
     expect(updateDeploymentStatus).not.toHaveBeenCalled();
     expect(recordReconciliation).not.toHaveBeenCalled();
-    expect((await agreements.getAgreementById(agreementId))?.policy).toEqual(policy);
+    expect((await agreements.getAgreementById(agreementId))?.policy).toEqual(
+      policy,
+    );
+  });
+
+  it("records hybrid conditions without bypassing buyer acceptance", async () => {
+    const hybrid: AgreementMetadata = {
+      ...agreement,
+      deliverables: [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          title: "Delivery",
+          description: "",
+          required: true,
+          active: true,
+          position: 0,
+          evidenceRequirements: [
+            {
+              id: "22222222-2222-4222-8222-222222222222",
+              label: "Delivery photo",
+              kind: "PHOTO",
+              required: true,
+              configuration: {},
+              position: 0,
+            },
+          ],
+        },
+      ],
+    };
+    const { service, verifier } = await setup(
+      verifiedTransaction(),
+      [],
+      new InMemoryAgreementConditionVerificationRepository(),
+      hybrid,
+    );
+
+    const result = await service.verify(
+      agreementId,
+      seller,
+      verifiedTransaction().sourceTransactionHash,
+    );
+
+    expect(result.status).toBe("verified");
+    expect(verifier.requests[0]?.conditionSubmission).toBe(
+      "prerequisite_record",
+    );
   });
 
   it("rejects invalid senders, recipients, tokens, amounts, and failed transactions", async () => {
-    const cases = [
+    const cases: {
+      override: Partial<VerifiedSourceTransaction>;
+      code: VerificationFailureCode;
+    }[] = [
       { override: { from: unrelated }, code: "SUBJECT_MISMATCH" },
       {
         override: {
-          data: transferInterface.encodeFunctionData("transfer", [unrelated, 100000000n]),
+          data: transferInterface.encodeFunctionData("transfer", [
+            unrelated,
+            100000000n,
+          ]),
           logs: [transferLog(token, seller, unrelated)],
         },
         code: "WRONG_CALLDATA",
@@ -219,7 +293,10 @@ describe("agreement condition service", () => {
       { override: { logs: [transferLog(unrelated)] }, code: "WRONG_ASSET" },
       {
         override: {
-          data: transferInterface.encodeFunctionData("transfer", [buyer, 100000000n]),
+          data: transferInterface.encodeFunctionData("transfer", [
+            buyer,
+            100000000n,
+          ]),
           logs: [transferLog(token, seller, buyer, 99999999n)],
         },
         code: "WRONG_AMOUNT",
@@ -228,7 +305,9 @@ describe("agreement condition service", () => {
     ];
 
     for (const testCase of cases) {
-      const { service } = await setup(verifiedTransaction(testCase.override));
+      const { service } = await setup(verifiedTransaction(testCase.override), [
+        { ok: false, code: testCase.code, message: "policy rejection" },
+      ]);
       const result = await service.verify(
         agreementId,
         seller,
@@ -243,7 +322,7 @@ describe("agreement condition service", () => {
 
   it("maps temporary proof failures to a retryable condition state", async () => {
     const transactionHash = verifiedTransaction().sourceTransactionHash;
-    const failure: ProofVerificationResult = {
+    const failure: AttestcoinVerificationResult = {
       ok: false,
       code: "INVALID_PROOF",
       message: "raw provider detail",
@@ -280,7 +359,8 @@ describe("agreement condition service", () => {
 
   it("does not duplicate work while another verification attempt is in progress", async () => {
     const transaction = verifiedTransaction();
-    const verifications = new InMemoryAgreementConditionVerificationRepository();
+    const verifications =
+      new InMemoryAgreementConditionVerificationRepository();
     await verifications.startVerification({
       id: "11111111-1111-4111-8111-111111111111",
       agreementId,
@@ -302,7 +382,8 @@ describe("agreement condition service", () => {
 
   it("rejects a transaction already verified for another agreement", async () => {
     const transaction = verifiedTransaction();
-    const verifications = new InMemoryAgreementConditionVerificationRepository();
+    const verifications =
+      new InMemoryAgreementConditionVerificationRepository();
     const otherAgreement = id("other condition agreement");
     const other = await verifications.startVerification({
       id: "44444444-4444-4444-8444-444444444444",

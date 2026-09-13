@@ -24,9 +24,10 @@ describe("dashboard preview modules", () => {
       <PlaceholderModule kind="proofs" onHome={() => {}} />,
     );
     expect(html).toContain(">Home<");
-    expect(html).toContain("Proofs workspace");
-    expect(html).toContain("No automatic payout");
-    expect(html).toContain("authorized buyer or arbitrator settlement action");
+    expect(html).toContain("PROOFS WORKSPACE");
+    expect(html).toContain("Verification Center");
+    expect(html).toContain("never authorizes settlement by itself");
+    expect(html).toContain("Manual withdrawal");
   });
 
   it("clearly labels preview features as coming next", () => {

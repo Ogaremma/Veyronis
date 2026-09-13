@@ -29,6 +29,8 @@ contract EvidenceClaimRegistryTest is Test {
         bytes32 indexed evidenceCommitment,
         bytes32 sourceEvidenceKey
     );
+    event VerifiedConditionSettled(bytes32 indexed claimId, bytes32 indexed evidenceCommitment);
+    event VerifiedConditionRecorded(bytes32 indexed claimId, bytes32 indexed evidenceCommitment);
 
     function setUp() public {
         registry = new EvidenceClaimRegistry(verifier);
@@ -55,6 +57,162 @@ contract EvidenceClaimRegistryTest is Test {
         assertEq(escrow.depositedAmount(), PRICE);
         assertEq(escrow.withdrawals(buyer), 0);
         assertEq(escrow.withdrawals(seller), 0);
+    }
+
+    function testAuthorizedConditionClaimSettlesSellerWithoutBuyerConfirmation() public {
+        VeyronisEscrow funded = _deployEscrow(AGREEMENT);
+        _fund(funded);
+        EvidenceClaimRegistry.Claim memory claim = _claim(funded, AGREEMENT, SOURCE_TX, seller);
+        bytes32 claimId = registry.computeClaimId(claim);
+
+        vm.expectEmit(true, true, true, true, address(funded));
+        emit VerifiedConditionSettled(claimId, claim.evidenceCommitment);
+        vm.expectEmit(true, true, true, true, address(registry));
+        emit VerifiedClaimAccepted(
+            claimId,
+            address(funded),
+            claim.evidenceCommitment,
+            registry.computeSourceEvidenceKey(claim)
+        );
+        vm.prank(verifier);
+        bytes32 acceptedId = registry.submitVerifiedConditionClaim(claim);
+
+        assertEq(acceptedId, claimId);
+        assertEq(uint256(funded.state()), uint256(VeyronisEscrow.State.Complete));
+        assertEq(funded.activeEvidenceCommitment(), claim.evidenceCommitment);
+        assertEq(funded.verifiedClaimId(), claimId);
+        assertEq(funded.depositedAmount(), 0);
+        assertEq(funded.withdrawals(seller), PRICE);
+        assertEq(funded.totalAccountedFunds(), address(funded).balance);
+    }
+
+    function testConditionSettlementRequiresAuthorizedVerifier() public {
+        VeyronisEscrow funded = _deployEscrow(AGREEMENT);
+        _fund(funded);
+        EvidenceClaimRegistry.Claim memory claim = _claim(funded, AGREEMENT, SOURCE_TX, seller);
+
+        vm.prank(stranger);
+        vm.expectRevert(EvidenceClaimRegistry.UnauthorizedVerifier.selector);
+        registry.submitVerifiedConditionClaim(claim);
+    }
+
+    function testAuthorizedPrerequisiteClaimRecordsWithoutSettlement() public {
+        VeyronisEscrow funded = _deployEscrow(AGREEMENT, false);
+        _fund(funded);
+        EvidenceClaimRegistry.Claim memory claim = _claim(funded, AGREEMENT, SOURCE_TX, seller);
+        bytes32 claimId = registry.computeClaimId(claim);
+
+        vm.expectEmit(true, true, true, true, address(funded));
+        emit VerifiedConditionRecorded(claimId, claim.evidenceCommitment);
+        vm.expectEmit(true, true, true, true, address(registry));
+        emit VerifiedClaimAccepted(
+            claimId,
+            address(funded),
+            claim.evidenceCommitment,
+            registry.computeSourceEvidenceKey(claim)
+        );
+        vm.prank(verifier);
+        bytes32 acceptedId = registry.submitVerifiedPrerequisiteClaim(claim);
+
+        assertEq(acceptedId, claimId);
+        assertEq(uint256(funded.state()), uint256(VeyronisEscrow.State.AwaitingDelivery));
+        assertEq(funded.activeEvidenceCommitment(), bytes32(0));
+        assertEq(funded.verifiedClaimId(), claimId);
+        assertEq(funded.depositedAmount(), PRICE);
+        assertEq(funded.withdrawals(seller), 0);
+
+        vm.prank(buyer);
+        funded.confirmDelivery();
+        assertEq(uint256(funded.state()), uint256(VeyronisEscrow.State.Complete));
+        assertEq(funded.withdrawals(seller), PRICE);
+    }
+
+    function testPrerequisiteClaimRequiresAuthorizedVerifier() public {
+        VeyronisEscrow funded = _deployEscrow(AGREEMENT, false);
+        _fund(funded);
+        EvidenceClaimRegistry.Claim memory claim = _claim(funded, AGREEMENT, SOURCE_TX, seller);
+
+        vm.prank(stranger);
+        vm.expectRevert(EvidenceClaimRegistry.UnauthorizedVerifier.selector);
+        registry.submitVerifiedPrerequisiteClaim(claim);
+    }
+
+    function testPrerequisiteClaimRejectedAfterRefundRequest() public {
+        VeyronisEscrow funded = _deployEscrow(AGREEMENT, false);
+        _fund(funded);
+        vm.prank(buyer);
+        funded.requestRefund(keccak256("refund evidence"));
+        EvidenceClaimRegistry.Claim memory claim = _claim(funded, AGREEMENT, SOURCE_TX, seller);
+
+        vm.prank(verifier);
+        vm.expectRevert(EvidenceClaimRegistry.SettlementEvidenceAlreadyActive.selector);
+        registry.submitVerifiedPrerequisiteClaim(claim);
+    }
+
+    function testConditionSettlementModeIsEnforcedOnChain() public {
+        VeyronisEscrow hybrid = _deployEscrow(AGREEMENT, false);
+        _fund(hybrid);
+        EvidenceClaimRegistry.Claim memory hybridClaim = _claim(hybrid, AGREEMENT, SOURCE_TX, seller);
+
+        vm.prank(verifier);
+        vm.expectRevert(VeyronisEscrow.ConditionSettlementModeMismatch.selector);
+        registry.submitVerifiedConditionClaim(hybridClaim);
+
+        VeyronisEscrow blockchainOnly = _deployEscrow(AGREEMENT, true);
+        _fund(blockchainOnly);
+        EvidenceClaimRegistry.Claim memory directClaim =
+            _claim(blockchainOnly, AGREEMENT, SOURCE_TX, seller);
+
+        vm.prank(buyer);
+        vm.expectRevert(VeyronisEscrow.ConditionSettlementModeMismatch.selector);
+        blockchainOnly.confirmDelivery();
+
+        vm.prank(verifier);
+        vm.expectRevert(VeyronisEscrow.ConditionSettlementModeMismatch.selector);
+        registry.submitVerifiedPrerequisiteClaim(directClaim);
+    }
+
+    function testTransactionHashSubmissionCannotDirectlySettleEscrow() public {
+        VeyronisEscrow funded = _deployEscrow(AGREEMENT);
+        _fund(funded);
+        bytes32 evidenceCommitment = _evidenceCommitment(SOURCE_TX, seller);
+        bytes32 claimId = keccak256("claim");
+
+        vm.prank(buyer);
+        vm.expectRevert(VeyronisEscrow.Unauthorized.selector);
+        funded.settleVerifiedCondition(claimId, evidenceCommitment);
+        vm.prank(seller);
+        vm.expectRevert(VeyronisEscrow.Unauthorized.selector);
+        funded.settleVerifiedCondition(claimId, evidenceCommitment);
+        vm.prank(stranger);
+        vm.expectRevert(VeyronisEscrow.Unauthorized.selector);
+        funded.settleVerifiedCondition(claimId, evidenceCommitment);
+    }
+
+    function testConditionSettlementRequiresFundedEscrow() public {
+        VeyronisEscrow unfunded = _deployEscrow(AGREEMENT);
+        EvidenceClaimRegistry.Claim memory claim = _claim(unfunded, AGREEMENT, SOURCE_TX, seller);
+
+        vm.prank(verifier);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                EvidenceClaimRegistry.EscrowNotAwaitingDelivery.selector,
+                uint8(VeyronisEscrow.State.AwaitingPayment)
+            )
+        );
+        registry.submitVerifiedConditionClaim(claim);
+    }
+
+    function testConditionSettlementRejectedAfterRefundRequest() public {
+        VeyronisEscrow funded = _deployEscrow(AGREEMENT);
+        _fund(funded);
+        vm.prank(buyer);
+        funded.requestRefund(keccak256("refund evidence"));
+        EvidenceClaimRegistry.Claim memory claim = _claim(funded, AGREEMENT, SOURCE_TX, seller);
+
+        vm.prank(verifier);
+        vm.expectRevert(EvidenceClaimRegistry.SettlementEvidenceAlreadyActive.selector);
+        registry.submitVerifiedConditionClaim(claim);
     }
 
     function testUnauthorizedSubmitterRejected() public {
@@ -238,16 +396,35 @@ contract EvidenceClaimRegistryTest is Test {
     }
 
     function _deployEscrow(bytes32 agreement) internal returns (VeyronisEscrow) {
-        return new VeyronisEscrow(
-            buyer, seller, arbitrator, agreement, POLICY, PRICE, address(registry)
-        );
+        return _deployEscrow(agreement, true);
+    }
+
+    function _deployEscrow(
+        bytes32 agreement,
+        bool directConditionSettlement
+    ) internal returns (VeyronisEscrow) {
+        return
+            new VeyronisEscrow(
+                buyer,
+                seller,
+                arbitrator,
+                agreement,
+                POLICY,
+                PRICE,
+                address(registry),
+                directConditionSettlement
+            );
     }
 
     function _fundAndDispute(VeyronisEscrow target, bytes32 evidenceCommitment) internal {
-        vm.prank(buyer);
-        target.deposit{value: PRICE}();
+        _fund(target);
         vm.prank(buyer);
         target.openDispute(evidenceCommitment);
+    }
+
+    function _fund(VeyronisEscrow target) internal {
+        vm.prank(buyer);
+        target.deposit{value: PRICE}();
     }
 
     function _claim(

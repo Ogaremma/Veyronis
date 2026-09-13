@@ -2,7 +2,11 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ZeroAddress, ZeroHash, id } from "ethers";
-import type { AgreementDetails, EscrowState, ParticipantRole } from "@veyronis/shared";
+import type {
+  AgreementDetails,
+  EscrowState,
+  ParticipantRole,
+} from "@veyronis/shared";
 import { AgreementDetailView } from "./agreement-detail-view";
 
 function detailFor(
@@ -30,6 +34,26 @@ function detailFor(
         calldataSelector: "0x00000000",
         requireTransferEvent: false,
       },
+      deliverables: [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          title: "Delivery",
+          description: "",
+          required: true,
+          active: true,
+          position: 0,
+          evidenceRequirements: [
+            {
+              id: "22222222-2222-4222-8222-222222222222",
+              label: "Delivery receipt",
+              kind: "RECEIPT",
+              required: true,
+              configuration: {},
+              position: 0,
+            },
+          ],
+        },
+      ],
     },
     actions: ["withdraw"],
     timeline: [],
@@ -63,7 +87,11 @@ function renderDetail(detail: AgreementDetails) {
 
 describe("agreement withdrawal gating", () => {
   it("does not show seller withdrawal before terminal settlement", () => {
-    for (const state of ["AwaitingPayment", "AwaitingDelivery", "Disputed"] as const) {
+    for (const state of [
+      "AwaitingPayment",
+      "AwaitingDelivery",
+      "Disputed",
+    ] as const) {
       const html = renderDetail(detailFor("seller", state));
       expect(html).not.toContain("Withdraw 1.0 ETH");
       expect(html).not.toContain("ETH available");
@@ -71,14 +99,24 @@ describe("agreement withdrawal gating", () => {
   });
 
   it("shows seller withdrawal only when Complete with a positive balance", () => {
-    expect(renderDetail(detailFor("seller", "Complete"))).toContain("Withdraw 1.0 ETH");
-    expect(renderDetail(detailFor("seller", "Complete", "0"))).not.toContain("Withdraw 1.0 ETH");
+    expect(renderDetail(detailFor("seller", "Complete"))).toContain(
+      "Withdraw 1.0 ETH",
+    );
+    expect(renderDetail(detailFor("seller", "Complete", "0"))).not.toContain(
+      "Withdraw 1.0 ETH",
+    );
   });
 
   it("does not give buyer or arbitrator the seller withdrawal control", () => {
-    expect(renderDetail(detailFor("buyer", "Complete"))).not.toContain(">Withdraw");
-    expect(renderDetail(detailFor("arbitrator", "Complete"))).not.toContain(">Withdraw");
-    expect(renderDetail(detailFor("buyer", "Refunded"))).toContain("Withdraw 1.0 ETH");
+    expect(renderDetail(detailFor("buyer", "Complete"))).not.toContain(
+      ">Withdraw",
+    );
+    expect(renderDetail(detailFor("arbitrator", "Complete"))).not.toContain(
+      ">Withdraw",
+    );
+    expect(renderDetail(detailFor("buyer", "Refunded"))).toContain(
+      "Withdraw 1.0 ETH",
+    );
   });
 });
 
@@ -86,14 +124,29 @@ describe("agreement guidance", () => {
   it("orders seller work and keeps proof advisory", () => {
     const html = renderDetail(detailFor("seller", "AwaitingDelivery"));
     const flowStart = html.indexOf("Review agreement terms");
-    const evidence = html.indexOf("Complete required delivery evidence");
-    const condition = html.indexOf("Complete external blockchain condition");
-    const review = html.indexOf("Wait for verification and review");
-    const settlement = html.indexOf("Wait for buyer acceptance or arbitrator resolution");
-    expect([flowStart, evidence, condition, review, settlement]).toEqual(
-      [...[flowStart, evidence, condition, review, settlement]].sort((left, right) => left - right),
-    );
-    expect(html).toContain("Proof verification is advisory input");
-    expect(html).toContain("does not automatically release funds");
+    const evidence = html.indexOf("Submit application work evidence");
+    const condition = html.indexOf("Submit external transaction hash");
+    const review = html.indexOf("Verification and buyer acceptance");
+    const settlement = html.indexOf("Withdraw only after contract credit");
+    expect(flowStart).toBeGreaterThanOrEqual(0);
+    expect(evidence).toBeGreaterThan(flowStart);
+    expect(condition).toBe(-1);
+    expect(review).toBeGreaterThan(evidence);
+    expect(settlement).toBeGreaterThan(review);
+    expect(html).toContain("configured requirements");
+    expect(html).toContain("only after the escrow contract credits the seller");
+  });
+
+  it("hides buyer confirmation for blockchain-only agreements but keeps refund protection", () => {
+    const detail = detailFor("buyer", "AwaitingDelivery", "0");
+    detail.metadata.policy.evidenceType = id("SOURCE_PAYMENT");
+    detail.metadata.deliverables = [];
+    detail.actions = ["requestRefund", "openDispute"];
+
+    const html = renderDetail(detail);
+
+    expect(html).not.toContain("Confirm delivery");
+    expect(html).toContain("Request refund");
+    expect(html).toContain("Open dispute");
   });
 });

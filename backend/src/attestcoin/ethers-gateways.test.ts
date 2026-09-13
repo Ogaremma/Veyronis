@@ -44,7 +44,8 @@ function fakeRegistry(options: {
     }),
   };
   const submit = vi.fn(async () => transaction);
-  (submit as any).staticCall = async () => options.staticClaimId ?? expectedClaimId;
+  (submit as any).staticCall = async () =>
+    options.staticClaimId ?? expectedClaimId;
 
   const consumed = vi.fn();
   (consumed as any).staticCall = async () => options.consumed ?? true;
@@ -70,6 +71,8 @@ function fakeRegistry(options: {
     getFunction: (name: string) => {
       if (name === "authorizedVerifier") return authorizedVerifier;
       if (name === "submitVerifiedClaim") return submit;
+      if (name === "submitVerifiedConditionClaim") return submit;
+      if (name === "submitVerifiedPrerequisiteClaim") return submit;
       if (name === "consumedClaims") return consumed;
       if (name === "sourceEvidenceEscrow") return sourceEvidence;
       throw new Error(`Unexpected registry function: ${name}`);
@@ -92,6 +95,22 @@ describe("EthersEvidenceClaimRegistryGateway", () => {
     const result = await gateway.submitVerifiedClaim(claim);
     expect(result.claimId).toBe(expectedClaimId);
     expect(result.transactionHash).toBe(`0x${"66".repeat(32)}`);
+  });
+
+  it("signs the authorized prerequisite and direct condition paths", async () => {
+    const gateway = gatewayWithFakeRegistry({});
+    await expect(
+      gateway.submitVerifiedPrerequisiteClaim(claim),
+    ).resolves.toMatchObject({
+      claimId: expectedClaimId,
+      transactionHash: `0x${"66".repeat(32)}`,
+    });
+    await expect(
+      gateway.submitVerifiedConditionClaim(claim),
+    ).resolves.toMatchObject({
+      claimId: expectedClaimId,
+      transactionHash: `0x${"66".repeat(32)}`,
+    });
   });
 
   it("rejects a reverted registry transaction", async () => {

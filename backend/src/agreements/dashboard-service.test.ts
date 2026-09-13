@@ -5,6 +5,7 @@ import type {
   AgreementDiscoveryItem,
   AgreementMetadata,
 } from "@veyronis/shared";
+import { externalBlockchainConditionFromPolicy } from "@veyronis/shared";
 import { InMemoryAgreementRepository } from "./agreement-repository.js";
 import { actionsFor } from "./dashboard-service.js";
 import { AgreementDashboardService } from "./dashboard-service.js";
@@ -87,7 +88,11 @@ describe("participant-specific agreement actions", () => {
   });
 
   it("does not expose seller withdrawal before terminal settlement", () => {
-    for (const state of ["AwaitingPayment", "AwaitingDelivery", "Disputed"] as const) {
+    for (const state of [
+      "AwaitingPayment",
+      "AwaitingDelivery",
+      "Disputed",
+    ] as const) {
       expect(actionsFor("seller", state, 10n)).not.toContain("withdraw");
     }
     expect(actionsFor("seller", "Complete", 10n)).toEqual(["withdraw"]);
@@ -95,6 +100,20 @@ describe("participant-specific agreement actions", () => {
     expect(actionsFor("buyer", "Refunded", 10n)).toEqual(["withdraw"]);
     expect(actionsFor("buyer", "Complete", 10n)).toEqual([]);
     expect(actionsFor("arbitrator", "Complete", 10n)).toEqual([]);
+  });
+
+  it("chooses buyer acceptance only for application or hybrid evidence", () => {
+    expect(
+      actionsFor("buyer", "AwaitingDelivery", 0n, "blockchain_condition_only"),
+    ).toEqual(["requestRefund", "openDispute"]);
+    expect(
+      actionsFor("buyer", "AwaitingDelivery", 0n, "application_work_evidence"),
+    ).toEqual(["confirmDelivery", "requestRefund", "openDispute"]);
+    expect(actionsFor("buyer", "AwaitingDelivery", 0n, "hybrid")).toEqual([
+      "confirmDelivery",
+      "requestRefund",
+      "openDispute",
+    ]);
   });
 
   it("shows each authenticated participant their role and authoritative state", async () => {
@@ -125,28 +144,68 @@ describe("participant-specific agreement actions", () => {
       readSnapshot: vi.fn(),
     });
 
-    await expect(service.list("0x9000000000000000000000000000000000000009")).resolves.toEqual([]);
+    await expect(
+      service.list("0x9000000000000000000000000000000000000009"),
+    ).resolves.toEqual([]);
   });
 
   it("opens the agreement for every participant regardless of address casing", async () => {
     const repository = new InMemoryAgreementRepository();
     await repository.createAgreement(metadata);
-    const reader = { read: vi.fn(async () => ({ snapshot, timeline: [] })), readSnapshot: vi.fn(async () => snapshot) };
+    const reader = {
+      read: vi.fn(async () => ({ snapshot, timeline: [] })),
+      readSnapshot: vi.fn(async () => snapshot),
+    };
     const service = new AgreementDashboardService(repository, reader);
-    for (const [address, role] of [[metadata.buyer, "buyer"], [metadata.seller, "seller"], [metadata.arbitrator, "arbitrator"]] as const) {
-      await expect(service.details(metadata.id, address.toLowerCase())).resolves.toMatchObject({ role, chain: snapshot });
+    for (const [address, role] of [
+      [metadata.buyer, "buyer"],
+      [metadata.seller, "seller"],
+      [metadata.arbitrator, "arbitrator"],
+    ] as const) {
+      await expect(
+        service.details(metadata.id, address.toLowerCase()),
+      ).resolves.toMatchObject({ role, chain: snapshot });
     }
   });
 
   it("recognizes the production seller when event-log reconciliation is unavailable", async () => {
-    const liveMetadata = { ...metadata, id: id("live-agreement"), buyer: "0x7e2508E29F4d013bea4E8d7840f648AEA8B1f13F", seller: "0x4C9dE9AEFb29Fc33CCeFbd048b244aBEf251Db02", arbitrator: "0x0b843e489e21D3cb56AE0E9b23EfdE486843437D", escrowAddress: "0xdc99785c8d14F49E0731145947514A9DE42Da59c" };
-    const liveSnapshot = { ...snapshot, buyer: liveMetadata.buyer, seller: liveMetadata.seller, arbitrator: liveMetadata.arbitrator, escrowAddress: liveMetadata.escrowAddress, state: "AwaitingDelivery" as const };
+    const liveMetadata = {
+      ...metadata,
+      id: id("live-agreement"),
+      buyer: "0x7e2508E29F4d013bea4E8d7840f648AEA8B1f13F",
+      seller: "0x4C9dE9AEFb29Fc33CCeFbd048b244aBEf251Db02",
+      arbitrator: "0x0b843e489e21D3cb56AE0E9b23EfdE486843437D",
+      escrowAddress: "0xdc99785c8d14F49E0731145947514A9DE42Da59c",
+    };
+    const liveSnapshot = {
+      ...snapshot,
+      buyer: liveMetadata.buyer,
+      seller: liveMetadata.seller,
+      arbitrator: liveMetadata.arbitrator,
+      escrowAddress: liveMetadata.escrowAddress,
+      state: "AwaitingDelivery" as const,
+    };
     const repository = new InMemoryAgreementRepository();
     await repository.createAgreement(liveMetadata);
-    const reader = { read: vi.fn(async () => { throw new Error("RPC block range exceeded"); }), readSnapshot: vi.fn(async () => liveSnapshot) };
+    const reader = {
+      read: vi.fn(async () => {
+        throw new Error("RPC block range exceeded");
+      }),
+      readSnapshot: vi.fn(async () => liveSnapshot),
+    };
     const service = new AgreementDashboardService(repository, reader);
-    await expect(service.details(liveMetadata.id, liveMetadata.seller.toLowerCase())).resolves.toMatchObject({ role: "seller", chain: liveSnapshot, timeline: [], actions: ["openDispute"] });
-    expect(reader.readSnapshot).toHaveBeenCalledWith(liveMetadata.escrowAddress, liveMetadata.seller);
+    await expect(
+      service.details(liveMetadata.id, liveMetadata.seller.toLowerCase()),
+    ).resolves.toMatchObject({
+      role: "seller",
+      chain: liveSnapshot,
+      timeline: [],
+      actions: ["openDispute"],
+    });
+    expect(reader.readSnapshot).toHaveBeenCalledWith(
+      liveMetadata.escrowAddress,
+      liveMetadata.seller,
+    );
   });
 
   it("keeps participant-only details unavailable to unrelated wallets", async () => {
@@ -154,7 +213,12 @@ describe("participant-specific agreement actions", () => {
     await repository.createAgreement(metadata);
     const reader = { read: vi.fn(), readSnapshot: vi.fn() };
     const service = new AgreementDashboardService(repository, reader);
-    await expect(service.details(metadata.id, "0x9000000000000000000000000000000000000009")).rejects.toThrow("Not an agreement participant");
+    await expect(
+      service.details(
+        metadata.id,
+        "0x9000000000000000000000000000000000000009",
+      ),
+    ).rejects.toThrow("Not an agreement participant");
     expect(reader.read).not.toHaveBeenCalled();
     expect(reader.readSnapshot).not.toHaveBeenCalled();
   });
@@ -169,7 +233,11 @@ describe("participant-specific agreement actions", () => {
       ),
       read: vi.fn(),
     };
-    const service = new AgreementDashboardService(repository, reader, "sepolia");
+    const service = new AgreementDashboardService(
+      repository,
+      reader,
+      "sepolia",
+    );
 
     const items = await service.listDiscovery();
 
@@ -186,6 +254,9 @@ describe("participant-specific agreement actions", () => {
         createdAt: metadata.createdAt,
         updatedAt: metadata.updatedAt,
         status: "live",
+        lifecycle: "blockchain_condition_only",
+        condition: externalBlockchainConditionFromPolicy(metadata.policy)!,
+        verificationStatus: "pending",
       },
       {
         id: closedMetadata.id,
@@ -199,6 +270,11 @@ describe("participant-specific agreement actions", () => {
         createdAt: closedMetadata.createdAt,
         updatedAt: closedMetadata.updatedAt,
         status: "closed",
+        lifecycle: "blockchain_condition_only",
+        condition: externalBlockchainConditionFromPolicy(
+          closedMetadata.policy,
+        )!,
+        verificationStatus: "pending",
       },
     ]);
     expect(reader.readSnapshot).toHaveBeenCalledTimes(2);
@@ -206,15 +282,18 @@ describe("participant-specific agreement actions", () => {
     expect(Object.keys(items[0]!).sort()).toEqual([
       "arbitrator",
       "buyer",
+      "condition",
       "createdAt",
       "escrowAddress",
       "id",
+      "lifecycle",
       "network",
       "requiredAmount",
       "seller",
       "state",
       "status",
       "updatedAt",
+      "verificationStatus",
     ]);
   });
 });

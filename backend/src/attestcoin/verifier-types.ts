@@ -1,5 +1,6 @@
 import type {
   AttestcoinProofRequest,
+  AttestcoinVerificationResult,
   EvidencePolicy,
   VerificationFailureCode,
   VerifiedEvidenceClaim,
@@ -33,6 +34,12 @@ export interface CryptographicProofVerifier {
   verify(reference: AttestcoinProofRequest): Promise<ProofVerificationResult>;
 }
 
+export interface AuthorizedConditionVerifier {
+  verifyAndSubmit(
+    request: AttestcoinProofRequest,
+  ): Promise<AttestcoinVerificationResult>;
+}
+
 export interface InterpretedEvidence {
   evidenceType: string;
   subject: string;
@@ -44,7 +51,10 @@ export type PolicyEvaluationResult =
   | { ok: false; code: VerificationFailureCode; message: string };
 
 export interface EvidencePolicyEvaluator {
-  evaluate(transaction: VerifiedSourceTransaction, policy: EvidencePolicy): PolicyEvaluationResult;
+  evaluate(
+    transaction: VerifiedSourceTransaction,
+    policy: EvidencePolicy,
+  ): PolicyEvaluationResult;
 }
 
 export interface EscrowDisputeContext {
@@ -52,13 +62,24 @@ export interface EscrowDisputeContext {
   agreementCommitment: string;
   evidencePolicyCommitment: string;
   activeEvidenceCommitment: string;
+  directConditionSettlement: boolean;
   buyer: string;
   seller: string;
   state: number;
 }
 
+export interface EscrowSettlementContext {
+  state: number;
+  verifiedClaimId: string;
+  activeEvidenceCommitment: string;
+  sellerWithdrawal: bigint;
+}
+
 export interface EscrowContextReader {
   readDisputeContext(escrowAddress: string): Promise<EscrowDisputeContext>;
+  readSettlementContext(
+    escrowAddress: string,
+  ): Promise<EscrowSettlementContext>;
   readVerifiedClaimId(escrowAddress: string): Promise<string>;
 }
 
@@ -70,5 +91,13 @@ export interface RegistrySubmission {
 export interface EvidenceClaimRegistryGateway {
   isClaimConsumed(claimId: string): Promise<boolean>;
   sourceEvidenceEscrow(sourceEvidenceKey: string): Promise<string>;
-  submitVerifiedClaim(claim: VerifiedEvidenceClaim): Promise<RegistrySubmission>;
+  submitVerifiedClaim(
+    claim: VerifiedEvidenceClaim,
+  ): Promise<RegistrySubmission>;
+  submitVerifiedConditionClaim(
+    claim: VerifiedEvidenceClaim,
+  ): Promise<RegistrySubmission>;
+  submitVerifiedPrerequisiteClaim(
+    claim: VerifiedEvidenceClaim,
+  ): Promise<RegistrySubmission>;
 }

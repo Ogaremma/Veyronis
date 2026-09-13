@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { getAddress } from "ethers";
 import {
+  agreementLifecycleMode,
   bytes32Schema,
+  conditionVerificationProviders,
   externalBlockchainConditionFromPolicy,
   type AgreementConditionDetails,
   type AgreementConditionVerification,
@@ -9,17 +11,10 @@ import {
   type AttestcoinProofRequest,
   type ParticipantRole,
 } from "@veyronis/shared";
-import {
-  computeEvidenceCommitment,
-} from "../attestcoin/attestcoin-verifier.js";
-import type {
-  CryptographicProofVerifier,
-  EvidencePolicyEvaluator,
-} from "../attestcoin/verifier-types.js";
+import { computeEvidenceCommitment } from "../attestcoin/attestcoin-verifier.js";
+import type { AuthorizedConditionVerifier } from "../attestcoin/verifier-types.js";
 import type { AgreementRepository } from "./agreement-repository.js";
-import type {
-  AgreementConditionVerificationRepository,
-} from "./agreement-condition-repository.js";
+import type { AgreementConditionVerificationRepository } from "./agreement-condition-repository.js";
 
 export class AgreementConditionServiceError extends Error {
   constructor(
@@ -34,8 +29,7 @@ export class AgreementConditionService {
   constructor(
     private readonly agreements: AgreementRepository,
     private readonly verifications: AgreementConditionVerificationRepository,
-    private readonly proofVerifier: CryptographicProofVerifier,
-    private readonly policyEvaluator: EvidencePolicyEvaluator,
+    private readonly verifier: AuthorizedConditionVerifier,
   ) {}
 
   async get(
@@ -49,9 +43,11 @@ export class AgreementConditionService {
         404,
         "This agreement does not have an external blockchain condition.",
       );
-    const verification = await this.verifications.latestVerification(agreementId);
+    const verification =
+      await this.verifications.latestVerification(agreementId);
     return {
       condition,
+      verificationProviders: conditionVerificationProviders,
       ...(verification ? { verification } : {}),
     };
   }
@@ -107,43 +103,29 @@ export class AgreementConditionService {
     if (!started.claimed) return verification;
 
     const request = this.proofRequest(agreement, transactionHash);
-    const proof = await this.proofVerifier.verify(request);
-    if (!proof.ok) {
+    const result = await this.verifier.verifyAndSubmit(request);
+    if (!result.ok) {
       const retryable =
-        proof.code === "INVALID_PROOF" || proof.code === "PROVIDER_FAILURE";
+        result.code === "INVALID_PROOF" || result.code === "PROVIDER_FAILURE";
       return this.finishFailure(
         verification,
-        retryable ? "PROOF_UNAVAILABLE" : proof.code,
+        retryable ? "PROOF_UNAVAILABLE" : result.code,
         retryable
           ? "The cross-chain proof is not available yet. Wait for attestation and try again."
-          : proof.message,
-      );
-    }
-
-    const evaluation = this.policyEvaluator.evaluate(
-      proof.transaction,
-      agreement.policy,
-    );
-    if (!evaluation.ok) {
-      return this.finishFailure(
-        verification,
-        evaluation.code,
-        evaluation.message,
+          : result.message,
       );
     }
 
     const verifiedAt = new Date().toISOString();
     let updated;
     try {
-      updated = await this.verifications.updateVerification(
-        verification.id,
-        {
-          status: "verified",
-          verifiedAmount: evaluation.evidence.amount,
-          verifiedAt,
-          updatedAt: verifiedAt,
-        },
-      );
+      updated = await this.verifications.updateVerification(verification.id, {
+        status: "verified",
+        verifiedClaimId: result.claimId,
+        verifiedAmount: result.verifiedAmount,
+        verifiedAt,
+        updatedAt: verifiedAt,
+      });
     } catch (error) {
       if (isUniqueViolation(error)) {
         return this.finishFailure(
@@ -206,6 +188,10 @@ export class AgreementConditionService {
       transactionHash,
       subject: agreement.policy.expectedSender,
       policy: agreement.policy,
+      conditionSubmission:
+        agreementLifecycleMode(agreement) === "blockchain_condition_only"
+          ? "direct_settlement"
+          : "prerequisite_record",
     };
   }
 

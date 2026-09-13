@@ -1,5 +1,6 @@
 import { getAddress } from "ethers";
 import type {
+  AgreementLifecycleMode,
   AgreementDiscoveryItem,
   AgreementAction,
   AgreementDetails,
@@ -7,10 +8,16 @@ import type {
   EscrowState,
   ParticipantRole,
 } from "@veyronis/shared";
-import { canWithdrawEscrowFunds, isTerminalEscrowState } from "@veyronis/shared";
+import {
+  agreementLifecycleMode,
+  canWithdrawEscrowFunds,
+  externalBlockchainConditionFromPolicy,
+  isTerminalEscrowState,
+} from "@veyronis/shared";
 import type { AgreementRepository } from "./agreement-repository.js";
 import type { AgreementContractReader } from "./contract-read-layer.js";
 import { AgreementReconciliationService } from "./reconciliation-service.js";
+import type { AgreementConditionVerificationRepository } from "./agreement-condition-repository.js";
 
 export class AgreementDashboardService {
   private readonly reconciliation: AgreementReconciliationService;
@@ -18,6 +25,7 @@ export class AgreementDashboardService {
     private readonly repository: AgreementRepository,
     private readonly reader: AgreementContractReader,
     private readonly network = "sepolia",
+    private readonly conditions?: AgreementConditionVerificationRepository,
   ) {
     this.reconciliation = new AgreementReconciliationService(reader);
   }
@@ -32,6 +40,9 @@ export class AgreementDashboardService {
           metadata.escrowAddress,
           metadata.buyer,
         );
+        const condition = externalBlockchainConditionFromPolicy(
+          metadata.policy,
+        );
         return {
           id: metadata.id,
           escrowAddress: metadata.escrowAddress,
@@ -44,6 +55,15 @@ export class AgreementDashboardService {
           createdAt: metadata.createdAt,
           updatedAt: metadata.updatedAt,
           status: isTerminalEscrowState(snapshot.state) ? "closed" : "live",
+          lifecycle: agreementLifecycleMode(metadata),
+          ...(condition
+            ? {
+                condition,
+                verificationStatus:
+                  (await this.conditions?.latestVerification(metadata.id))
+                    ?.status ?? "pending",
+              }
+            : {}),
         };
       }),
     );
@@ -59,10 +79,20 @@ export class AgreementDashboardService {
         if (!metadata.escrowAddress) return { metadata, role };
         try {
           const result = await this.reconciliation.reconcile(metadata, address);
-          await this.repository.recordReconciliation({ agreementId: metadata.id, ...result.reconciliation });
+          await this.repository.recordReconciliation({
+            agreementId: metadata.id,
+            ...result.reconciliation,
+          });
           return { metadata, role, chain: result.snapshot };
         } catch {
-          return { metadata, role, chain: await this.reader.readSnapshot(metadata.escrowAddress, address) };
+          return {
+            metadata,
+            role,
+            chain: await this.reader.readSnapshot(
+              metadata.escrowAddress,
+              address,
+            ),
+          };
         }
       }),
     );
@@ -77,11 +107,40 @@ export class AgreementDashboardService {
     try {
       const { snapshot, timeline, reconciliation } =
         await this.reconciliation.reconcile(metadata, address);
-      await this.repository.recordReconciliation({ agreementId: metadata.id, ...reconciliation });
-      return { metadata, role, chain: snapshot, timeline, reconciliation, actions: actionsFor(role, snapshot.state, BigInt(snapshot.withdrawalAmount)) };
+      await this.repository.recordReconciliation({
+        agreementId: metadata.id,
+        ...reconciliation,
+      });
+      return {
+        metadata,
+        role,
+        chain: snapshot,
+        timeline,
+        reconciliation,
+        actions: actionsFor(
+          role,
+          snapshot.state,
+          BigInt(snapshot.withdrawalAmount),
+          agreementLifecycleMode(metadata),
+        ),
+      };
     } catch {
-      const snapshot = await this.reader.readSnapshot(metadata.escrowAddress, address);
-      return { metadata, role, chain: snapshot, timeline: [], actions: actionsFor(role, snapshot.state, BigInt(snapshot.withdrawalAmount)) };
+      const snapshot = await this.reader.readSnapshot(
+        metadata.escrowAddress,
+        address,
+      );
+      return {
+        metadata,
+        role,
+        chain: snapshot,
+        timeline: [],
+        actions: actionsFor(
+          role,
+          snapshot.state,
+          BigInt(snapshot.withdrawalAmount),
+          agreementLifecycleMode(metadata),
+        ),
+      };
     }
   }
 }
@@ -97,12 +156,17 @@ export function actionsFor(
   role: ParticipantRole,
   state: EscrowState,
   withdrawal: bigint,
+  lifecycle: AgreementLifecycleMode = "application_work_evidence",
 ): AgreementAction[] {
   const actions: AgreementAction[] = [];
   if (role === "buyer" && state === "AwaitingPayment")
     actions.push("deposit", "cancel");
-  if (role === "buyer" && state === "AwaitingDelivery")
-    actions.push("confirmDelivery", "requestRefund", "openDispute");
+  if (role === "buyer" && state === "AwaitingDelivery") {
+    if (lifecycle !== "blockchain_condition_only")
+      actions.push("confirmDelivery");
+    actions.push("requestRefund");
+    actions.push("openDispute");
+  }
   if (role === "seller" && state === "AwaitingDelivery")
     actions.push("openDispute");
   if (role === "seller" && state === "RefundRequested")

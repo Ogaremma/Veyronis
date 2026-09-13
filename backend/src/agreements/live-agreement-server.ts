@@ -15,11 +15,8 @@ import { AgreementDashboardService } from "./dashboard-service.js";
 import { WorkEvidenceService } from "./work-evidence-service.js";
 import { SqlWorkEvidenceRepository } from "./work-evidence-repository.js";
 import { AgreementConditionService } from "./agreement-condition-service.js";
-import {
-  SqlAgreementConditionVerificationRepository,
-} from "./agreement-condition-repository.js";
+import { SqlAgreementConditionVerificationRepository } from "./agreement-condition-repository.js";
 import { createLiveAttestcoinVerifier } from "../attestcoin/live-verifier.js";
-import { AttestcoinService } from "../attestcoin/attestcoin-service.js";
 import { SourceTransactionPolicyEvaluator } from "../attestcoin/source-transaction-interpreter.js";
 
 const config = loadAgreementServerConfig();
@@ -49,34 +46,49 @@ const dashboard = new AgreementDashboardService(
   agreementRepository,
   new EthersAgreementContractReader(provider),
   network.name === "unknown" ? "sepolia" : network.name,
+  new SqlAgreementConditionVerificationRepository(database),
 );
 const workEvidence = new WorkEvidenceService(
   agreementRepository,
   new SqlWorkEvidenceRepository(database),
 );
-const condition = new AgreementConditionService(
-  agreementRepository,
-  new SqlAgreementConditionVerificationRepository(database),
-  new AttestcoinService(appConfig, creditcoinProvider),
-  new SourceTransactionPolicyEvaluator(),
+const attestcoinVerifier =
+  config.APP_ENV === "production"
+    ? await createLiveAttestcoinVerifier(
+        appConfig,
+        sepoliaVerifierProvider,
+        creditcoinProvider,
+      )
+    : await (async () => {
+        try {
+          return await createLiveAttestcoinVerifier(
+            appConfig,
+            sepoliaVerifierProvider,
+          );
+        } catch {
+          return undefined;
+        }
+      })();
+const conditionVerifications = new SqlAgreementConditionVerificationRepository(
+  database,
 );
-const attestcoinVerifier = config.APP_ENV === "production"
-  ? await createLiveAttestcoinVerifier(appConfig, sepoliaVerifierProvider, creditcoinProvider)
-  : await (async () => {
-      try {
-        return await createLiveAttestcoinVerifier(appConfig, sepoliaVerifierProvider);
-      } catch {
-        return undefined;
-      }
-    })();
-const server = createServer(createAgreementHttpHandler(service, {
-  auth,
-  dashboard,
-  workEvidence,
-  condition,
-  appEnv: config.APP_ENV,
-  ...(attestcoinVerifier ? { attestcoinVerifier } : {}),
-}));
+const condition = attestcoinVerifier
+  ? new AgreementConditionService(
+      agreementRepository,
+      conditionVerifications,
+      attestcoinVerifier,
+    )
+  : undefined;
+const server = createServer(
+  createAgreementHttpHandler(service, {
+    auth,
+    dashboard,
+    workEvidence,
+    ...(condition ? { condition } : {}),
+    appEnv: config.APP_ENV,
+    ...(attestcoinVerifier ? { attestcoinVerifier } : {}),
+  }),
+);
 server.listen(config.BACKEND_PORT, config.BACKEND_HOST, () => {
   console.log(
     `Veyronis agreement backend listening on http://${config.BACKEND_HOST}:${config.BACKEND_PORT}`,
@@ -87,7 +99,8 @@ function createDatabasePool(connectionString: string): Pool {
   const url = new URL(connectionString);
   const localHost = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
   const sslDisabled = url.searchParams.get("sslmode") === "disable";
-  const ssl = localHost || sslDisabled ? undefined : { rejectUnauthorized: true };
+  const ssl =
+    localHost || sslDisabled ? undefined : { rejectUnauthorized: true };
   return new Pool({
     connectionString,
     max: 5,

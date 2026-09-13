@@ -1,5 +1,7 @@
 import {
+  agreementLifecycleMode,
   isTerminalEscrowState,
+  type AgreementConditionVerification,
   type AgreementDashboardItem,
   type AgreementDiscoveryItem,
   type ParticipantRole,
@@ -11,8 +13,25 @@ export function isClosedAgreement(item: AgreementDashboardItem): boolean {
   return item.chain?.state ? closedStates.has(item.chain.state) : false;
 }
 
-export function agreementDisplayStatus(item: AgreementDashboardItem): string {
-  return item.chain?.state ?? "Not deployed";
+export function agreementDisplayStatus(
+  item: AgreementDashboardItem,
+  conditionVerification?: AgreementConditionVerification,
+): string {
+  if (!item.chain) return "Not deployed";
+  if (
+    agreementLifecycleMode(item.metadata) === "blockchain_condition_only" &&
+    item.chain.state === "AwaitingDelivery"
+  ) {
+    return "Verification Pending";
+  }
+  if (
+    agreementLifecycleMode(item.metadata) === "blockchain_condition_only" &&
+    item.chain.state === "Complete" &&
+    conditionVerification?.status === "verified"
+  ) {
+    return "Verified / Payment Unlocked";
+  }
+  return item.chain.state;
 }
 
 export function agreementCounterparty(item: AgreementDashboardItem): string {
@@ -23,10 +42,12 @@ export function agreementCounterparty(item: AgreementDashboardItem): string {
 
 export function agreementAction(item: AgreementDashboardItem): string {
   if (!item.chain) return "Open Agreement";
-  if (item.role === "buyer" && item.chain.state === "AwaitingPayment") return "Fund Contract";
-  if (item.role === "arbitrator" && item.chain.state === "Disputed") return "Review Dispute";
+  if (item.role === "buyer" && item.chain.state === "AwaitingPayment")
+    return "Fund Contract";
+  if (item.role === "arbitrator" && item.chain.state === "Disputed")
+    return "Review Dispute";
   if (isClosedAgreement(item)) return "View History";
-  return "Open Contract";
+  return "Open Escrow";
 }
 
 export function roleLabel(role: ParticipantRole): string {
@@ -56,7 +77,60 @@ export function isClosedDiscoveryAgreement(
 }
 
 export function discoveryDisplayStatus(item: AgreementDiscoveryItem): string {
+  if (
+    item.lifecycle === "blockchain_condition_only" &&
+    item.state === "AwaitingDelivery"
+  ) {
+    return "Verification Pending";
+  }
+  if (
+    item.lifecycle === "blockchain_condition_only" &&
+    item.state === "Complete" &&
+    item.verificationStatus === "verified"
+  ) {
+    return "Verified / Payment Unlocked";
+  }
   return item.state;
+}
+
+export function agreementStatusTone(
+  status: string,
+): "blue" | "green" | "amber" | "red" {
+  if (status === "AwaitingPayment" || status === "RefundRequested")
+    return "amber";
+  if (status === "Verification Pending") return "blue";
+  if (status === "Verified / Payment Unlocked" || status === "Complete")
+    return "green";
+  if (status === "Disputed") return "red";
+  return "blue";
+}
+
+export function discoveryConditionLabel(item: AgreementDiscoveryItem): string {
+  if (item.lifecycle === "blockchain_condition_only")
+    return "External blockchain action";
+  if (item.lifecycle === "hybrid") return "Blockchain + work evidence";
+  return "Application work evidence";
+}
+
+export function discoveryVerificationLabel(
+  item: AgreementDiscoveryItem,
+): string {
+  if (
+    item.lifecycle !== "blockchain_condition_only" &&
+    item.lifecycle !== "hybrid"
+  ) {
+    return "Not applicable";
+  }
+  if (item.verificationStatus === "verified") {
+    return item.state === "Complete"
+      ? "Verified / Payment Unlocked"
+      : "Verified";
+  }
+  if (item.verificationStatus === "verification_in_progress")
+    return "Verification in progress";
+  if (item.verificationStatus === "verification_failed")
+    return "Verification failed";
+  return "Verification pending";
 }
 
 export function discoveryCounterparty(
@@ -78,5 +152,5 @@ export function discoveryAction(
   if (role === "arbitrator" && item.state === "Disputed")
     return "Review Dispute";
   if (isClosedDiscoveryAgreement(item)) return "View History";
-  return "Open Contract";
+  return "Open Escrow";
 }

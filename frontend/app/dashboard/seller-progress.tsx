@@ -1,4 +1,9 @@
-import { canWithdrawEscrowFunds, externalBlockchainConditionFromPolicy } from "@veyronis/shared";
+import {
+  agreementLifecycleMode,
+  canWithdrawEscrowFunds,
+  externalBlockchainConditionFromPolicy,
+  hasApplicationEvidenceRequirements,
+} from "@veyronis/shared";
 import type {
   AgreementConditionVerification,
   AgreementDetails,
@@ -16,68 +21,96 @@ export function sellerProgressSteps(
   workEvidenceSubmissions: readonly WorkEvidenceSubmission[] = [],
   conditionVerification?: AgreementConditionVerification,
 ): SellerProgressStep[] {
+  const lifecycle = agreementLifecycleMode(detail.metadata);
   const requirements = (detail.metadata.deliverables ?? [])
-    .filter(deliverable => deliverable.active)
-    .flatMap(deliverable => deliverable.evidenceRequirements);
+    .filter((deliverable) => deliverable.active)
+    .flatMap((deliverable) => deliverable.evidenceRequirements);
   const requiredRequirementIds = new Set(
-    requirements.filter(requirement => requirement.required).map(requirement => requirement.id),
+    requirements
+      .filter((requirement) => requirement.required)
+      .map((requirement) => requirement.id),
   );
   const acceptedRequirementIds = new Set(
     workEvidenceSubmissions
-      .filter(submission => submission.status === "accepted")
-      .map(submission => submission.requirementId),
+      .filter((submission) => submission.status === "accepted")
+      .map((submission) => submission.requirementId),
   );
-  const evidenceComplete = requirements.length === 0 || [...requiredRequirementIds].every(id => acceptedRequirementIds.has(id));
-  const evidenceSubmitted = workEvidenceSubmissions.some(submission => submission.status !== "rejected");
-  const externalCondition = externalBlockchainConditionFromPolicy(detail.metadata.policy);
-  const conditionComplete = !externalCondition || conditionVerification?.status === "verified";
+  const evidenceComplete =
+    requirements.length === 0 ||
+    [...requiredRequirementIds].every((id) => acceptedRequirementIds.has(id));
+  const evidenceSubmitted = workEvidenceSubmissions.some(
+    (submission) => submission.status !== "rejected",
+  );
+  const externalCondition = externalBlockchainConditionFromPolicy(
+    detail.metadata.policy,
+  );
+  const conditionComplete =
+    !externalCondition || conditionVerification?.status === "verified";
+  const verifiedOnChain =
+    externalCondition !== undefined &&
+    conditionVerification?.status === "verified" &&
+    detail.chain !== undefined &&
+    detail.chain.verifiedClaimId === conditionVerification.verifiedClaimId;
   const prerequisitesComplete = evidenceComplete && conditionComplete;
   const withdrawable = detail.chain
-    ? canWithdrawEscrowFunds(detail.role, detail.chain.state, detail.chain.withdrawalAmount)
+    ? canWithdrawEscrowFunds(
+        detail.role,
+        detail.chain.state,
+        detail.chain.withdrawalAmount,
+      )
     : false;
 
-  return [
+  const steps: SellerProgressStep[] = [
     { label: "Review agreement terms", status: "Complete", tone: "complete" },
-    {
-      label: "Complete required delivery evidence",
-      status: requirements.length === 0
-        ? "Not required"
-        : evidenceComplete
-          ? "Complete"
-          : evidenceSubmitted
-            ? "Submitted"
-            : "Required",
-      tone: requirements.length === 0 || evidenceComplete ? "complete" : "current",
-    },
-    {
-      label: "Complete external blockchain condition",
-      status: !externalCondition
-        ? "Not configured"
-        : conditionVerification?.status === "verified"
+  ];
+
+  if (hasApplicationEvidenceRequirements(detail.metadata)) {
+    steps.push({
+      label: "Submit application work evidence",
+      status: evidenceComplete
+        ? "Complete"
+        : evidenceSubmitted
+          ? "Submitted"
+          : "Required",
+      tone: evidenceComplete ? "complete" : "current",
+    });
+  }
+
+  if (externalCondition) {
+    steps.push({
+      label: "Submit external transaction hash",
+      status:
+        conditionVerification?.status === "verified"
           ? "Verified"
           : conditionVerification?.status === "verification_failed"
             ? "Verification failed"
             : "Pending",
       tone: conditionComplete ? "complete" : "current",
-    },
+    });
+  }
+
+  steps.push(
+    lifecycle === "blockchain_condition_only"
+      ? {
+          label: "Authorized verifier settlement",
+          status: verifiedOnChain
+            ? "Seller credited"
+            : "Waiting for authorized verifier",
+          tone: verifiedOnChain ? "complete" : "current",
+        }
+      : {
+          label: "Verification and buyer acceptance",
+          status: prerequisitesComplete
+            ? "Current"
+            : "Waiting for prerequisites",
+          tone: prerequisitesComplete ? "current" : "pending",
+        },
     {
-      label: "Wait for verification and review",
-      status: prerequisitesComplete ? "Current" : "Waiting for prerequisites",
-      tone: prerequisitesComplete ? "current" : "pending",
-    },
-    {
-      label: "Wait for buyer acceptance or arbitrator resolution",
-      status: detail.chain?.state === "AwaitingDelivery" || detail.chain?.state === "Disputed"
-        ? "Current"
-        : "Not current",
-      tone: detail.chain?.state === "AwaitingDelivery" || detail.chain?.state === "Disputed"
-        ? "current"
-        : "pending",
-    },
-    {
-      label: "Withdraw only after valid settlement",
+      label: "Withdraw only after contract credit",
       status: withdrawable ? "Available" : "Not available",
       tone: withdrawable ? "complete" : "inactive",
     },
-  ];
+  );
+
+  return steps;
 }

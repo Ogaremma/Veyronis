@@ -11,6 +11,14 @@ export type EvidenceReference = z.infer<typeof evidenceReferenceSchema>;
 
 export const bytes32Schema = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
 export const addressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
+export const conditionSubmissionModeSchema = z.enum([
+  "dispute_evidence",
+  "prerequisite_record",
+  "direct_settlement",
+]);
+export type ConditionSubmissionMode = z.infer<
+  typeof conditionSubmissionModeSchema
+>;
 
 export const attestcoinProofRequestSchema = evidenceReferenceSchema.extend({
   agreementCommitment: bytes32Schema,
@@ -19,6 +27,7 @@ export const attestcoinProofRequestSchema = evidenceReferenceSchema.extend({
   evidenceType: bytes32Schema,
   subject: addressSchema,
   policy: z.lazy(() => evidencePolicySchema),
+  conditionSubmission: conditionSubmissionModeSchema.optional(),
 });
 
 export type AttestcoinProofRequest = z.infer<
@@ -144,7 +153,8 @@ export const externalBlockchainConditionSchema = z
     if (!condition.requireSuccess) {
       context.addIssue({
         code: "custom",
-        message: "External blockchain conditions require a successful transaction",
+        message:
+          "External blockchain conditions require a successful transaction",
       });
     }
   });
@@ -331,13 +341,18 @@ export interface AgreementConditionVerification {
   updatedAt: string;
 }
 
+export const conditionVerificationProviders = [
+  "Attestcoin",
+  "Creditcoin",
+] as const;
+
 export interface AgreementConditionDetails {
   condition: ExternalBlockchainCondition;
+  verificationProviders: readonly string[];
   verification?: AgreementConditionVerification;
 }
 
-export interface WorkEvidenceSubmission
-  extends WorkEvidenceSubmissionInput {
+export interface WorkEvidenceSubmission extends WorkEvidenceSubmissionInput {
   id: string;
   agreementId: string;
   submitter: string;
@@ -403,6 +418,36 @@ export interface AgreementDiscoveryItem {
   createdAt: string;
   updatedAt: string;
   status: "live" | "closed";
+  lifecycle: AgreementLifecycleMode;
+  condition?: ExternalBlockchainCondition;
+  verificationStatus?: AgreementConditionStatus;
+}
+
+export const agreementLifecycleSchema = z.enum([
+  "blockchain_condition_only",
+  "application_work_evidence",
+  "hybrid",
+]);
+export type AgreementLifecycleMode = z.infer<typeof agreementLifecycleSchema>;
+
+export function hasApplicationEvidenceRequirements(
+  metadata: Pick<AgreementMetadata, "deliverables">,
+): boolean {
+  return (metadata.deliverables ?? []).some(
+    (deliverable) =>
+      deliverable.active && deliverable.evidenceRequirements.length > 0,
+  );
+}
+
+export function agreementLifecycleMode(
+  metadata: Pick<AgreementMetadata, "deliverables" | "policy">,
+): AgreementLifecycleMode {
+  const hasBlockchainCondition =
+    externalBlockchainConditionFromPolicy(metadata.policy) !== undefined;
+  const hasWorkEvidence = hasApplicationEvidenceRequirements(metadata);
+  if (hasBlockchainCondition && hasWorkEvidence) return "hybrid";
+  if (hasBlockchainCondition) return "blockchain_condition_only";
+  return "application_work_evidence";
 }
 
 export type TransactionStatus =
@@ -655,6 +700,7 @@ export const verificationFailureCodeSchema = z.enum([
   "STALE_EVIDENCE",
   "MISSING_VERIFIED_FRESHNESS_CONTEXT",
   "ESCROW_NOT_DISPUTABLE",
+  "ESCROW_NOT_SETTLEABLE",
   "REPLAY_DETECTED",
   "REGISTRY_REJECTION",
   "PROVIDER_FAILURE",
@@ -671,6 +717,7 @@ export type AttestcoinVerificationResult =
       claim: VerifiedEvidenceClaim;
       claimId: string;
       transactionHash: string;
+      verifiedAmount: string;
     }
   | {
       ok: false;

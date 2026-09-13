@@ -7,6 +7,9 @@ interface IVeyronisEvidenceEscrow {
     function agreementCommitment() external view returns (bytes32);
     function evidencePolicyCommitment() external view returns (bytes32);
     function activeEvidenceCommitment() external view returns (bytes32);
+    function directConditionSettlement() external view returns (bool);
     function state() external view returns (uint8);
     function recordVerifiedEvidence(bytes32 claimId, bytes32 evidenceCommitment) external;
+    function recordVerifiedCondition(bytes32 claimId, bytes32 evidenceCommitment) external;
+    function settleVerifiedCondition(bytes32 claimId, bytes32 evidenceCommitment) external;
 }
