@@ -8,12 +8,20 @@ import { Web3Provider } from "./web3-provider";
 
 describe("Veyronis frontend", () => {
   it("starts with connected-wallet onboarding without seed creation", () => {
-    const html = renderToStaticMarkup(<Web3Provider><Home /></Web3Provider>);
-    expect(html).toContain("Trust between strangers, backed by verifiable evidence.");
+    const html = renderToStaticMarkup(
+      <Web3Provider>
+        <Home />
+      </Web3Provider>,
+    );
+    expect(html).toContain(
+      "Trust between strangers, backed by verifiable evidence.",
+    );
     expect(html).toContain("Connect wallet");
     expect(html).toContain("WalletConnect");
     expect(html).not.toContain("Confirm &amp; Deploy");
-    expect(html).toContain("never receives your private keys or recovery phrase");
+    expect(html).toContain(
+      "never receives your private keys or recovery phrase",
+    );
     expect(html).not.toContain("Create a new wallet");
     expect(html).not.toContain("Enter your recovery phrase");
   });
@@ -28,6 +36,7 @@ describe("Veyronis frontend", () => {
           evidenceRegistry: "0x4000000000000000000000000000000000000004",
           requiredAmount: "100",
           agreementNonce: id("nonce"),
+          agreementMode: "blockchain_condition_only",
           policy: {
             version: 1,
             evidenceType: id("SOURCE_PAYMENT"),

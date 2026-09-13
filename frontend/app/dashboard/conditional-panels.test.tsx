@@ -25,11 +25,13 @@ const requirement = {
 function detailFor(options: {
   deliverables?: (typeof requirement)[];
   externalCondition?: boolean;
+  mode?: "blockchain_condition_only" | "application_work_evidence" | "hybrid";
 }) {
   return {
     role: "seller",
     metadata: {
       id: "0x" + "1".repeat(64),
+      agreementMode: options.mode,
       policy: {
         version: 1,
         evidenceType:
@@ -90,6 +92,25 @@ describe("conditional agreement panels", () => {
     expect(html).not.toContain("Content hash");
     expect(html).not.toContain("MIME type");
     expect(html).not.toContain("Byte size");
+  });
+
+  it("hides ordinary work evidence for blockchain-only agreements with stale technical records", () => {
+    const detail = detailFor({
+      deliverables: [
+        {
+          ...requirement,
+          label: "Proof of transaction",
+          kind: "TRANSACTION_HASH",
+        },
+      ],
+      externalCondition: true,
+      mode: "blockchain_condition_only",
+    });
+
+    expect(hasWorkEvidenceRequirements(detail)).toBe(false);
+    expect(
+      renderToStaticMarkup(<WorkEvidencePanel detail={detail} baseUrl="" />),
+    ).toBe("");
   });
 
   it("shows the external condition only when configured", () => {

@@ -41,6 +41,7 @@ const draft: AgreementDraft = {
   requiredAmount: "100",
   agreementNonce: id("nonce"),
   evidenceRegistry: "0x4000000000000000000000000000000000000004",
+  agreementMode: "blockchain_condition_only",
   policy,
 };
 const deliverable: AgreementDeliverable = {
@@ -164,6 +165,50 @@ describe("canonical agreement commitments", () => {
         calldataSelector: "0x12345678",
       }).success,
     ).toBe(false);
+  });
+
+  it("supports blockchain-only creation without work deliverables", () => {
+    expect(() => validateAgreementDraft(draft)).not.toThrow();
+  });
+
+  it("rejects unnecessary work deliverables for blockchain-only creation", () => {
+    expect(() =>
+      validateAgreementDraft({
+        ...draft,
+        deliverables: [deliverable],
+      }),
+    ).toThrow("Blockchain-only agreements cannot include work deliverables");
+  });
+
+  it("requires application evidence for work-only creation", () => {
+    const workPolicy = {
+      ...policy,
+      evidenceType: BLOCKCHAIN_CONDITION_DISABLED_EVIDENCE_TYPE,
+    };
+    const workDraft = {
+      ...draft,
+      agreementMode: "application_work_evidence" as const,
+      policy: workPolicy,
+      deliverables: [deliverable],
+    };
+
+    expect(() => validateAgreementDraft(workDraft)).not.toThrow();
+    expect(() =>
+      validateAgreementDraft({ ...workDraft, deliverables: [] }),
+    ).toThrow("Work-only agreements require application work evidence");
+  });
+
+  it("requires both components for hybrid creation", () => {
+    const hybrid = {
+      ...draft,
+      agreementMode: "hybrid" as const,
+      deliverables: [deliverable],
+    };
+
+    expect(() => validateAgreementDraft(hybrid)).not.toThrow();
+    expect(() =>
+      validateAgreementDraft({ ...hybrid, deliverables: [] }),
+    ).toThrow("Hybrid agreements require both verification components");
   });
 
   it("binds participants, amount, policy, nonce, and registry in the agreement commitment", () => {

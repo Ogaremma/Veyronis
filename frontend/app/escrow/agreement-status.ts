@@ -29,7 +29,7 @@ export function agreementDisplayStatus(
     item.chain.state === "Complete" &&
     conditionVerification?.status === "verified"
   ) {
-    return "Verified / Payment Unlocked";
+    return "Verified on-chain / Payment unlocked";
   }
   return item.chain.state;
 }
@@ -88,7 +88,7 @@ export function discoveryDisplayStatus(item: AgreementDiscoveryItem): string {
     item.state === "Complete" &&
     item.verificationStatus === "verified"
   ) {
-    return "Verified / Payment Unlocked";
+    return "Verified on-chain / Payment unlocked";
   }
   return item.state;
 }
@@ -99,7 +99,10 @@ export function agreementStatusTone(
   if (status === "AwaitingPayment" || status === "RefundRequested")
     return "amber";
   if (status === "Verification Pending") return "blue";
-  if (status === "Verified / Payment Unlocked" || status === "Complete")
+  if (
+    status === "Verified on-chain / Payment unlocked" ||
+    status === "Complete"
+  )
     return "green";
   if (status === "Disputed") return "red";
   return "blue";
@@ -107,9 +110,9 @@ export function agreementStatusTone(
 
 export function discoveryConditionLabel(item: AgreementDiscoveryItem): string {
   if (item.lifecycle === "blockchain_condition_only")
-    return "External blockchain action";
-  if (item.lifecycle === "hybrid") return "Blockchain + work evidence";
-  return "Application work evidence";
+    return "External blockchain condition";
+  if (item.lifecycle === "hybrid") return "Blockchain + human review";
+  return "Application/work evidence";
 }
 
 export function discoveryVerificationLabel(
@@ -123,8 +126,8 @@ export function discoveryVerificationLabel(
   }
   if (item.verificationStatus === "verified") {
     return item.state === "Complete"
-      ? "Verified / Payment Unlocked"
-      : "Verified";
+      ? "Verified on-chain / Payment unlocked"
+      : "Verified on-chain";
   }
   if (item.verificationStatus === "verification_in_progress")
     return "Verification in progress";

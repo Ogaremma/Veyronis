@@ -3,6 +3,7 @@ import type {
   AttestcoinVerificationResult,
   VerificationFailureCode,
   VerifiedEvidenceClaim,
+  VerifiedConditionFacts,
 } from "@veyronis/shared";
 import {
   computeEvidencePolicyCommitment,
@@ -210,6 +211,20 @@ export class AttestcoinVerifier {
       sourceTransactionHash: transaction.sourceTransactionHash,
       subject: getAddress(interpreted.subject),
     };
+    const verifiedFacts: VerifiedConditionFacts = {
+      sourceChainKey: transaction.sourceChainKey,
+      sourceTransactionHash: transaction.sourceTransactionHash,
+      sourceBlockNumber: transaction.sourceBlockNumber,
+      chainId: transaction.chainId,
+      sender: getAddress(transaction.from),
+      recipient: getAddress(policy.expectedRecipient),
+      asset:
+        policy.assetKind === "native" ? "Native asset" : policy.expectedAsset,
+      amount: interpreted.amount,
+      transactionIncluded: true,
+      transactionSucceeded: true,
+      conditionMatch: true,
+    };
     const claimId = computeClaimId(claim);
     const sourceEvidenceKey = computeSourceEvidenceKey(claim);
 
@@ -266,6 +281,7 @@ export class AttestcoinVerifier {
             claimId: submission.claimId,
             transactionHash: submission.transactionHash,
             verifiedAmount: interpreted.amount,
+            verifiedFacts,
           };
         }
         const verifiedClaimId = await this.escrowReader.readVerifiedClaimId(
@@ -284,6 +300,7 @@ export class AttestcoinVerifier {
         claimId: submission.claimId,
         transactionHash: submission.transactionHash,
         verifiedAmount: interpreted.amount,
+        verifiedFacts,
       };
     } catch {
       return failure(

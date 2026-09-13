@@ -241,6 +241,11 @@ export const agreementDraftSchema = z.object({
   agreementNonce: bytes32Schema,
   evidenceRegistry: addressSchema,
   policy: evidencePolicySchema,
+  agreementMode: z.enum([
+    "blockchain_condition_only",
+    "application_work_evidence",
+    "hybrid",
+  ]),
   deliverables: z.array(agreementDeliverableSchema).max(50).optional(),
 });
 export type AgreementDraft = z.infer<typeof agreementDraftSchema>;
@@ -334,6 +339,7 @@ export interface AgreementConditionVerification {
   status: AgreementConditionStatus;
   verifiedClaimId?: string;
   verifiedAmount?: string;
+  verifiedFacts?: VerifiedConditionFacts;
   failureCode?: string;
   failureMessage?: string;
   submittedAt: string;
@@ -345,6 +351,20 @@ export const conditionVerificationProviders = [
   "Attestcoin",
   "Creditcoin",
 ] as const;
+
+export interface VerifiedConditionFacts {
+  sourceChainKey: number;
+  sourceTransactionHash: string;
+  sourceBlockNumber: number;
+  chainId: string;
+  sender: string;
+  recipient: string;
+  asset: string;
+  amount: string;
+  transactionIncluded: true;
+  transactionSucceeded: true;
+  conditionMatch: true;
+}
 
 export interface AgreementConditionDetails {
   condition: ExternalBlockchainCondition;
@@ -440,8 +460,11 @@ export function hasApplicationEvidenceRequirements(
 }
 
 export function agreementLifecycleMode(
-  metadata: Pick<AgreementMetadata, "deliverables" | "policy">,
+  metadata: Pick<AgreementMetadata, "deliverables" | "policy"> & {
+    agreementMode?: AgreementLifecycleMode;
+  },
 ): AgreementLifecycleMode {
+  if (metadata.agreementMode) return metadata.agreementMode;
   const hasBlockchainCondition =
     externalBlockchainConditionFromPolicy(metadata.policy) !== undefined;
   const hasWorkEvidence = hasApplicationEvidenceRequirements(metadata);
@@ -662,6 +685,29 @@ export function validateAgreementDraft(input: unknown): AgreementDraft {
   }
   if (BigInt(parsed.data.requiredAmount) === 0n)
     throw new Error("Required amount must be positive");
+
+  const hasBlockchainCondition =
+    externalBlockchainConditionFromPolicy(parsed.data.policy) !== undefined;
+  const hasWorkEvidence = hasApplicationEvidenceRequirements(parsed.data);
+  if (parsed.data.agreementMode === "blockchain_condition_only") {
+    if (!hasBlockchainCondition)
+      throw new Error(
+        "Blockchain-only agreements require an external blockchain condition",
+      );
+    if ((parsed.data.deliverables ?? []).length > 0)
+      throw new Error(
+        "Blockchain-only agreements cannot include work deliverables",
+      );
+  } else if (parsed.data.agreementMode === "application_work_evidence") {
+    if (hasBlockchainCondition)
+      throw new Error(
+        "Work-only agreements cannot include an external blockchain condition",
+      );
+    if (!hasWorkEvidence)
+      throw new Error("Work-only agreements require application work evidence");
+  } else if (!hasBlockchainCondition || !hasWorkEvidence) {
+    throw new Error("Hybrid agreements require both verification components");
+  }
   return parsed.data;
 }
 
@@ -718,6 +764,7 @@ export type AttestcoinVerificationResult =
       claimId: string;
       transactionHash: string;
       verifiedAmount: string;
+      verifiedFacts: VerifiedConditionFacts;
     }
   | {
       ok: false;

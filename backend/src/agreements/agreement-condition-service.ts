@@ -123,6 +123,7 @@ export class AgreementConditionService {
         status: "verified",
         verifiedClaimId: result.claimId,
         verifiedAmount: result.verifiedAmount,
+        verifiedFacts: result.verifiedFacts,
         verifiedAt,
         updatedAt: verifiedAt,
       });

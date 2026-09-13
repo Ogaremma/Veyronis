@@ -8,6 +8,7 @@ import {
   type ParticipantRole,
   type WorkEvidenceSubmission,
 } from "@veyronis/shared";
+import { agreementLifecycleMode } from "@veyronis/shared";
 import type { AgreementRepository } from "./agreement-repository.js";
 import type { WorkEvidenceRepository } from "./work-evidence-repository.js";
 
@@ -32,6 +33,11 @@ export class WorkEvidenceService {
     input: unknown,
   ): Promise<WorkEvidenceSubmission> {
     const agreement = await this.requireAgreement(agreementId);
+    if (agreementLifecycleMode(agreement) === "blockchain_condition_only")
+      throw new WorkEvidenceServiceError(
+        409,
+        "Blockchain-only agreements use external condition verification.",
+      );
     if (getAddress(wallet) !== getAddress(agreement.seller))
       throw new WorkEvidenceServiceError(
         403,
@@ -67,6 +73,8 @@ export class WorkEvidenceService {
         403,
         "Wallet is not an agreement participant.",
       );
+    if (agreementLifecycleMode(agreement) === "blockchain_condition_only")
+      return [];
     return this.submissions.listSubmissions(agreementId);
   }
 
@@ -77,11 +85,16 @@ export class WorkEvidenceService {
     input: unknown,
   ): Promise<WorkEvidenceSubmission> {
     const agreement = await this.requireAgreement(agreementId);
+    if (agreementLifecycleMode(agreement) === "blockchain_condition_only")
+      throw new WorkEvidenceServiceError(
+        409,
+        "Blockchain-only agreements use external condition verification.",
+      );
     const role = roleFor(agreement, wallet);
-    if (role !== "buyer" && role !== "arbitrator")
+    if (role !== "buyer")
       throw new WorkEvidenceServiceError(
         403,
-        "Only the buyer or arbitrator can review work evidence.",
+        "Only the buyer can review work evidence.",
       );
     const submission = await this.submissions.getSubmission(submissionId);
     if (!submission || submission.agreementId !== agreementId)

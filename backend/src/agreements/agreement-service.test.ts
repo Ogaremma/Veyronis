@@ -20,6 +20,7 @@ const draft: AgreementDraft = {
   evidenceRegistry: registry,
   requiredAmount: "100",
   agreementNonce: id("agreement nonce"),
+  agreementMode: "blockchain_condition_only",
   policy: {
     version: 1,
     evidenceType: id("SOURCE_PAYMENT"),

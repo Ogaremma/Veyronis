@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS agreement_condition_verifications (
   )),
   verified_claim_id TEXT,
   verified_amount NUMERIC(78, 0),
+  verified_facts JSONB,
   failure_code TEXT,
   failure_message TEXT,
   submitted_at TIMESTAMPTZ NOT NULL,

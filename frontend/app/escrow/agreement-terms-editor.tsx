@@ -18,7 +18,6 @@ const evidenceKinds: WorkEvidenceKind[] = [
   "TRACKING_URL",
   "RECEIPT",
   "TEXT",
-  "TRANSACTION_HASH",
 ];
 
 export function DeliverablesEditor({
@@ -68,19 +67,25 @@ export function DeliverablesEditor({
             <div>
               <GlassButton
                 disabled={index === 0}
-                onClick={() => moveDeliverable(deliverables, index, -1, onChange)}
+                onClick={() =>
+                  moveDeliverable(deliverables, index, -1, onChange)
+                }
               >
                 ↑
               </GlassButton>
               <GlassButton
                 disabled={index === deliverables.length - 1}
-                onClick={() => moveDeliverable(deliverables, index, 1, onChange)}
+                onClick={() =>
+                  moveDeliverable(deliverables, index, 1, onChange)
+                }
               >
                 ↓
               </GlassButton>
               <GlassButton
                 onClick={() =>
-                  onChange(deliverables.filter((item) => item.id !== deliverable.id))
+                  onChange(
+                    deliverables.filter((item) => item.id !== deliverable.id),
+                  )
                 }
               >
                 Remove
@@ -92,7 +97,9 @@ export function DeliverablesEditor({
             <GlassInput
               value={deliverable.title}
               placeholder="Product shipment"
-              onChange={(event) => update(deliverable.id, { title: event.currentTarget.value })}
+              onChange={(event) =>
+                update(deliverable.id, { title: event.currentTarget.value })
+              }
             />
           </label>
           <label>
@@ -101,7 +108,9 @@ export function DeliverablesEditor({
               value={deliverable.description}
               placeholder="10 custom T-shirts delivered to buyer."
               onChange={(event) =>
-                update(deliverable.id, { description: event.currentTarget.value })
+                update(deliverable.id, {
+                  description: event.currentTarget.value,
+                })
               }
             />
           </label>
@@ -111,7 +120,9 @@ export function DeliverablesEditor({
                 type="checkbox"
                 checked={deliverable.required}
                 onChange={(event) =>
-                  update(deliverable.id, { required: event.currentTarget.checked })
+                  update(deliverable.id, {
+                    required: event.currentTarget.checked,
+                  })
                 }
               />
               Required deliverable
@@ -121,7 +132,9 @@ export function DeliverablesEditor({
                 type="checkbox"
                 checked={deliverable.active}
                 onChange={(event) =>
-                  update(deliverable.id, { active: event.currentTarget.checked })
+                  update(deliverable.id, {
+                    active: event.currentTarget.checked,
+                  })
                 }
               />
               Active in agreement
@@ -130,7 +143,9 @@ export function DeliverablesEditor({
         </article>
       ))}
       {deliverables.length === 0 && (
-        <p className="dash-muted">Add at least one deliverable before review.</p>
+        <p className="dash-muted">
+          Add at least one deliverable before review.
+        </p>
       )}
     </section>
   );
@@ -215,7 +230,8 @@ export function EvidenceRequirementsEditor({
                         item.id === requirement.id
                           ? {
                               ...item,
-                              kind: event.currentTarget.value as WorkEvidenceKind,
+                              kind: event.currentTarget
+                                .value as WorkEvidenceKind,
                             }
                           : item,
                       ),

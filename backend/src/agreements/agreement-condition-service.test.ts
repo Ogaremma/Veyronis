@@ -56,6 +56,7 @@ const agreement: AgreementMetadata = {
   seller,
   arbitrator,
   evidenceRegistry: "0x6000000000000000000000000000000000000006",
+  agreementMode: "blockchain_condition_only",
   requiredAmount: "100000000000000",
   agreementNonce: id("nonce"),
   agreementCommitment: computeAgreementCommitment({
@@ -63,6 +64,7 @@ const agreement: AgreementMetadata = {
     seller,
     arbitrator,
     evidenceRegistry: "0x6000000000000000000000000000000000000006",
+    agreementMode: "blockchain_condition_only",
     requiredAmount: "100000000000000",
     agreementNonce: id("nonce"),
     policy,
@@ -106,6 +108,19 @@ class FakeAuthorizedVerifier implements AuthorizedConditionVerifier {
       claimId: id("accepted registry claim"),
       transactionHash: id("registry transaction"),
       verifiedAmount: "100000000",
+      verifiedFacts: {
+        sourceChainKey: this.transaction.sourceChainKey,
+        sourceTransactionHash: this.transaction.sourceTransactionHash,
+        sourceBlockNumber: this.transaction.sourceBlockNumber,
+        chainId: this.transaction.chainId,
+        sender: this.transaction.from,
+        recipient: reference.policy.expectedRecipient,
+        asset: token,
+        amount: "100000000",
+        transactionIncluded: true,
+        transactionSucceeded: true,
+        conditionMatch: true,
+      },
     };
   }
 }
@@ -212,6 +227,19 @@ describe("agreement condition service", () => {
       transactionHash,
       status: "verified",
       verifiedAmount: "100000000",
+      verifiedFacts: {
+        sourceChainKey: 1,
+        sourceTransactionHash: transactionHash,
+        sourceBlockNumber: 100,
+        chainId: "11155111",
+        sender: seller,
+        recipient: buyer,
+        asset: token,
+        amount: "100000000",
+        transactionIncluded: true,
+        transactionSucceeded: true,
+        conditionMatch: true,
+      },
     });
     expect(result.verifiedClaimId).toBe(id("accepted registry claim"));
     expect(verifier.requests[0]).toMatchObject({
@@ -234,6 +262,7 @@ describe("agreement condition service", () => {
   it("records hybrid conditions without bypassing buyer acceptance", async () => {
     const hybrid: AgreementMetadata = {
       ...agreement,
+      agreementMode: "hybrid",
       deliverables: [
         {
           id: "11111111-1111-4111-8111-111111111111",

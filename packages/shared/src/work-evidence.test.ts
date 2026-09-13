@@ -19,7 +19,8 @@ const arbitrator = "0x3000000000000000000000000000000000000003";
 const registry = "0x4000000000000000000000000000000000000004";
 const policy: EvidencePolicy = {
   version: 1,
-  evidenceType: "0x1000000000000000000000000000000000000000000000000000000000000001",
+  evidenceType:
+    "0x1000000000000000000000000000000000000000000000000000000000000001",
   sourceChainKey: 1,
   assetKind: "native",
   expectedSourceContract: "0x0000000000000000000000000000000000000000",
@@ -86,6 +87,7 @@ const draft: AgreementDraft = {
   agreementNonce:
     "0x4000000000000000000000000000000000000000000000000000000000000004",
   policy,
+  agreementMode: "hybrid",
   deliverables: [deliverable],
 };
 
@@ -113,61 +115,92 @@ describe("work evidence terms", () => {
       ],
     };
 
-    expect(agreementDeliverableSchema.safeParse(deliverable).success).toBe(true);
+    expect(agreementDeliverableSchema.safeParse(deliverable).success).toBe(
+      true,
+    );
     expect(
       agreementDeliverableSchema.safeParse(secondDeliverable).success,
     ).toBe(true);
-    expect(evidenceRequirementSchema.safeParse(optionalRequirement).success).toBe(true);
-    expect(workEvidenceSubmissionInputSchema.safeParse({
-      requirementId: requirement.id,
-      value: "https://example.com",
-      mimeType: "text/html",
-    }).success).toBe(true);
+    expect(
+      evidenceRequirementSchema.safeParse(optionalRequirement).success,
+    ).toBe(true);
+    expect(
+      workEvidenceSubmissionInputSchema.safeParse({
+        requirementId: requirement.id,
+        value: "https://example.com",
+        mimeType: "text/html",
+      }).success,
+    ).toBe(true);
   });
 
   it("changes the work evidence commitment when terms change", () => {
     const base = computeWorkEvidenceCommitment([deliverable]);
     expect(computeWorkEvidenceCommitment([])).toBe(ZeroHash);
-    expect(computeWorkEvidenceCommitment([{ ...deliverable, title: "Updated" }]))
-      .not.toBe(base);
-    expect(computeWorkEvidenceCommitment([{
-      ...deliverable,
-      evidenceRequirements: [
-        { ...requirement, required: false },
-        optionalRequirement,
-      ],
-    }])).not.toBe(base);
-    expect(computeWorkEvidenceCommitment([{
-      ...deliverable,
-      evidenceRequirements: [
-        { ...requirement, kind: "GITHUB_REPOSITORY" as const },
-        optionalRequirement,
-      ],
-    }])).not.toBe(base);
+    expect(
+      computeWorkEvidenceCommitment([{ ...deliverable, title: "Updated" }]),
+    ).not.toBe(base);
+    expect(
+      computeWorkEvidenceCommitment([
+        {
+          ...deliverable,
+          evidenceRequirements: [
+            { ...requirement, required: false },
+            optionalRequirement,
+          ],
+        },
+      ]),
+    ).not.toBe(base);
+    expect(
+      computeWorkEvidenceCommitment([
+        {
+          ...deliverable,
+          evidenceRequirements: [
+            { ...requirement, kind: "GITHUB_REPOSITORY" as const },
+            optionalRequirement,
+          ],
+        },
+      ]),
+    ).not.toBe(base);
   });
 
   it("binds work evidence into the agreement commitment while keeping blockchain policy separate", () => {
     const agreementCommitment = computeAgreementCommitment(draft);
     expect(computeAgreementCommitment({ ...draft })).toBe(agreementCommitment);
-    expect(computeAgreementCommitment({ ...draft, deliverables: undefined }))
-      .toBe(keccak256(AbiCoder.defaultAbiCoder().encode(
-        ["address", "address", "address", "uint256", "bytes32", "bytes32", "address"],
-        [
-          draft.buyer,
-          draft.seller,
-          draft.arbitrator,
-          draft.requiredAmount,
-          computeEvidencePolicyCommitment(draft.policy),
-          draft.agreementNonce,
-          draft.evidenceRegistry,
-        ],
-      )));
-    expect(computeAgreementCommitment({
-      ...draft,
-      deliverables: [{ ...deliverable, title: "Updated delivery" }],
-    })).not.toBe(agreementCommitment);
-    expect(computeEvidencePolicyCommitment(draft.policy))
-      .not.toBe(computeWorkEvidenceCommitment(draft.deliverables));
+    expect(
+      computeAgreementCommitment({ ...draft, deliverables: undefined }),
+    ).toBe(
+      keccak256(
+        AbiCoder.defaultAbiCoder().encode(
+          [
+            "address",
+            "address",
+            "address",
+            "uint256",
+            "bytes32",
+            "bytes32",
+            "address",
+          ],
+          [
+            draft.buyer,
+            draft.seller,
+            draft.arbitrator,
+            draft.requiredAmount,
+            computeEvidencePolicyCommitment(draft.policy),
+            draft.agreementNonce,
+            draft.evidenceRegistry,
+          ],
+        ),
+      ),
+    );
+    expect(
+      computeAgreementCommitment({
+        ...draft,
+        deliverables: [{ ...deliverable, title: "Updated delivery" }],
+      }),
+    ).not.toBe(agreementCommitment);
+    expect(computeEvidencePolicyCommitment(draft.policy)).not.toBe(
+      computeWorkEvidenceCommitment(draft.deliverables),
+    );
   });
 
   it("changes the agreement commitment for delivery ordering, state, and configuration", () => {
@@ -175,35 +208,38 @@ describe("work evidence terms", () => {
       ...draft,
       deliverables: [deliverable, secondDeliverable],
     });
-    expect(computeAgreementCommitment({
-      ...draft,
-      deliverables: [
-        { ...secondDeliverable, position: 0 },
-        { ...deliverable, position: 1 },
-      ],
-    })).not.toBe(base);
-    expect(computeAgreementCommitment({
-      ...draft,
-      deliverables: [
-        { ...deliverable, active: false },
-        secondDeliverable,
-      ],
-    })).not.toBe(base);
-    expect(computeAgreementCommitment({
-      ...draft,
-      deliverables: [
-        {
-          ...deliverable,
-          evidenceRequirements: [
-            {
-              ...requirement,
-              configuration: { expectedDomain: "staging.example.com" },
-            },
-            optionalRequirement,
-          ],
-        },
-        secondDeliverable,
-      ],
-    })).not.toBe(base);
+    expect(
+      computeAgreementCommitment({
+        ...draft,
+        deliverables: [
+          { ...secondDeliverable, position: 0 },
+          { ...deliverable, position: 1 },
+        ],
+      }),
+    ).not.toBe(base);
+    expect(
+      computeAgreementCommitment({
+        ...draft,
+        deliverables: [{ ...deliverable, active: false }, secondDeliverable],
+      }),
+    ).not.toBe(base);
+    expect(
+      computeAgreementCommitment({
+        ...draft,
+        deliverables: [
+          {
+            ...deliverable,
+            evidenceRequirements: [
+              {
+                ...requirement,
+                configuration: { expectedDomain: "staging.example.com" },
+              },
+              optionalRequirement,
+            ],
+          },
+          secondDeliverable,
+        ],
+      }),
+    ).not.toBe(base);
   });
 });

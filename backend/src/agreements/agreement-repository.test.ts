@@ -16,6 +16,7 @@ const record: AgreementMetadata = {
   agreementNonce: id("nonce"),
   agreementCommitment: id("agreement"),
   evidencePolicyCommitment: id("policy"),
+  agreementMode: "hybrid",
   deploymentStatus: "AWAITING_CONFIRMATION",
   createdAt: new Date(0).toISOString(),
   updatedAt: new Date(0).toISOString(),
@@ -83,18 +84,29 @@ describe("agreement repositories", () => {
       (await repository.getAgreementByEscrowAddress(record.evidenceRegistry))
         ?.deploymentStatus,
     ).toBe("DEPLOYED");
-    expect((await repository.getAgreementById(record.id))?.deliverables)
-      .toEqual(record.deliverables);
+    expect(
+      (await repository.getAgreementById(record.id))?.deliverables,
+    ).toEqual(record.deliverables);
   });
 
   it("lists an agreement for each participant but not an unrelated wallet", async () => {
     const repository = new InMemoryAgreementRepository();
     await repository.createAgreement(record);
 
-    expect(await repository.listAgreementsForParticipant(record.buyer)).toHaveLength(1);
-    expect(await repository.listAgreementsForParticipant(record.seller)).toHaveLength(1);
-    expect(await repository.listAgreementsForParticipant(record.arbitrator)).toHaveLength(1);
-    expect(await repository.listAgreementsForParticipant("0x9000000000000000000000000000000000000009")).toEqual([]);
+    expect(
+      await repository.listAgreementsForParticipant(record.buyer),
+    ).toHaveLength(1);
+    expect(
+      await repository.listAgreementsForParticipant(record.seller),
+    ).toHaveLength(1);
+    expect(
+      await repository.listAgreementsForParticipant(record.arbitrator),
+    ).toHaveLength(1);
+    expect(
+      await repository.listAgreementsForParticipant(
+        "0x9000000000000000000000000000000000000009",
+      ),
+    ).toEqual([]);
   });
 
   it("lists only deployed agreements with an escrow address", async () => {
@@ -145,11 +157,15 @@ describe("agreement repositories", () => {
     expect(database.calls[1]?.text).not.toContain(record.buyer);
     expect(database.calls[1]?.values).toContain(record.buyer);
     expect(database.calls[2]?.text).toContain("agreement_deliverables");
-    expect(database.calls[3]?.text).toContain("agreement_evidence_requirements");
+    expect(database.calls[3]?.text).toContain(
+      "agreement_evidence_requirements",
+    );
   });
 
   it("rolls back all agreement and evidence inserts when one term fails", async () => {
-    const database = createTransactionDatabase({ failOnSecondRequirement: true });
+    const database = createTransactionDatabase({
+      failOnSecondRequirement: true,
+    });
     const repository = new SqlAgreementRepository(database.executor);
 
     await expect(repository.createAgreement(record)).rejects.toThrow(
@@ -164,7 +180,9 @@ describe("agreement repositories", () => {
   });
 });
 
-function createTransactionDatabase(options?: { failOnSecondRequirement?: boolean }) {
+function createTransactionDatabase(options?: {
+  failOnSecondRequirement?: boolean;
+}) {
   const calls: Array<{ text: string; values: readonly unknown[] }> = [];
   const events: string[] = [];
   const rows = {

@@ -8,6 +8,7 @@ import type {
 import {
   agreementLifecycleMode,
   canWithdrawEscrowFunds,
+  conditionVerificationProviders,
   externalBlockchainConditionFromPolicy,
 } from "@veyronis/shared";
 import { formatEther } from "ethers";
@@ -112,7 +113,7 @@ export function AgreementConditionPanel({
   const chain = detail.chain;
   const verifiedOnChain = isVerifiedOnChain(detail, verification);
   const lifecycle = agreementLifecycleMode(detail.metadata);
-  const sellerSettled = verifiedOnChain && chain?.state === "Complete";
+  const sellerSettled = isEscrowPaymentUnlocked(detail, verification);
   const sellerWithdrawable =
     detail.role === "seller" &&
     chain !== undefined &&
@@ -130,9 +131,14 @@ export function AgreementConditionPanel({
           </div>
           <p>
             {sellerSettled
-              ? "Attestcoin and Creditcoin verified the transaction facts. The authorized verifier submitted the claim to the immutable registry, and the escrow credited the seller."
-              : "Attestcoin and Creditcoin verified the transaction facts. The authorized verifier recorded the claim in the immutable registry; buyer acceptance is still required."}
+              ? "Attestcoin/Creditcoin verified that the required blockchain transaction satisfies this agreement’s condition. The authorized claim was accepted and the escrow credited the seller."
+              : "Attestcoin/Creditcoin verified that the required blockchain transaction satisfies this agreement’s condition. The authorized claim was recorded; buyer acceptance is still required."}
           </p>
+          <strong className="provider-truth">
+            {condition
+              ? verificationProviderLabel(condition, true)
+              : "Verified by Attestcoin + Creditcoin"}
+          </strong>
         </div>
       )}
       <p className="dash-muted">
@@ -149,13 +155,24 @@ export function AgreementConditionPanel({
         <p className="dash-muted">Loading external condition...</p>
       ) : condition ? (
         <>
+          <ol
+            className="condition-path"
+            aria-label="External condition progression"
+          >
+            {conditionSummarySteps(detail, verification).map((step) => (
+              <li className={step.tone} key={step.label}>
+                <span>{step.status}</span>
+                <strong>{step.label}</strong>
+              </li>
+            ))}
+          </ol>
           <dl className="overview-grid">
             <div>
               <dt>Status</dt>
               <dd>
                 <StatusBadge
                   tone={
-                    status === "Verified"
+                    status === "Verified on-chain"
                       ? "green"
                       : status === "Verification failed" ||
                           status === "Proof unavailable"
@@ -168,8 +185,13 @@ export function AgreementConditionPanel({
               </dd>
             </div>
             <div>
-              <dt>Verification providers</dt>
-              <dd>{condition.verificationProviders.join(" / ")}</dd>
+              <dt>Provider truth</dt>
+              <dd>
+                {verificationProviderLabel(
+                  condition,
+                  verification?.status === "verified",
+                )}
+              </dd>
             </div>
             <div>
               <dt>Seller settlement</dt>
@@ -184,10 +206,14 @@ export function AgreementConditionPanel({
                     : verifiedOnChain
                       ? lifecycle === "hybrid"
                         ? "Awaiting buyer acceptance"
-                        : "Awaiting authorized settlement"
-                      : "Not settled"}
+                        : "Claim not accepted by escrow"
+                      : claimSettlementStatus(verification)}
                 </StatusBadge>
               </dd>
+            </div>
+            <div>
+              <dt>Payment status</dt>
+              <dd>{externalPaymentStatus(detail, verification).label}</dd>
             </div>
             {sellerWithdrawable && chain && (
               <div>
@@ -253,6 +279,75 @@ export function AgreementConditionPanel({
               </div>
             )}
           </dl>
+          {verification?.verifiedFacts && (
+            <details className="technical-details verified-facts" open>
+              <summary>Verified facts</summary>
+              <dl>
+                <div>
+                  <dt>Transaction hash</dt>
+                  <dd className="dash-mono">
+                    {verification.verifiedFacts.sourceTransactionHash}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Source chain / ID</dt>
+                  <dd>
+                    {verification.verifiedFacts.sourceChainKey} /{" "}
+                    {verification.verifiedFacts.chainId}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Source block</dt>
+                  <dd>{verification.verifiedFacts.sourceBlockNumber}</dd>
+                </div>
+                <div>
+                  <dt>Sender</dt>
+                  <dd className="dash-mono">
+                    {verification.verifiedFacts.sender}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Recipient</dt>
+                  <dd className="dash-mono">
+                    {verification.verifiedFacts.recipient}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Asset</dt>
+                  <dd className="dash-mono">
+                    {verification.verifiedFacts.asset}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Amount</dt>
+                  <dd>{verification.verifiedFacts.amount} base units</dd>
+                </div>
+                <div>
+                  <dt>Transaction inclusion</dt>
+                  <dd>Confirmed</dd>
+                </div>
+                <div>
+                  <dt>Transaction success</dt>
+                  <dd>Confirmed</dd>
+                </div>
+                <div>
+                  <dt>Condition match</dt>
+                  <dd>Confirmed</dd>
+                </div>
+              </dl>
+            </details>
+          )}
+          <ol className="verification-pipeline condition-stages">
+            {conditionVerificationStages(detail, verification).map((stage) => (
+              <li className={stage.tone} key={stage.label}>
+                <span>{stage.index}</span>
+                <div>
+                  <strong>{stage.label}</strong>
+                  <p>{stage.status}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
           <details className="technical-details">
             <summary>Technical details</summary>
             <dl>
@@ -262,7 +357,7 @@ export function AgreementConditionPanel({
               </div>
               <div>
                 <dt>EVM chain ID</dt>
-                <dd>11155111</dd>
+                <dd>{verification?.verifiedFacts?.chainId ?? "11155111"}</dd>
               </div>
               <div>
                 <dt>Raw amount</dt>
@@ -338,7 +433,19 @@ export function conditionTitle(details: AgreementConditionDetails) {
     details.condition.assetType === "erc20"
       ? "token transfer"
       : "native transfer";
-  return `External blockchain action: ${asset}`;
+  return `External blockchain condition: ${asset}`;
+}
+
+export function verificationProviderLabel(
+  details: AgreementConditionDetails,
+  verified = false,
+) {
+  const providers = details.verificationProviders.length
+    ? details.verificationProviders
+    : conditionVerificationProviders;
+  const names =
+    providers.length > 1 ? providers.join(" + ") : providers.join("");
+  return verified ? `Verified by ${names}` : names;
 }
 
 export function isVerifiedOnChain(
@@ -350,6 +457,207 @@ export function isVerifiedOnChain(
     verification.verifiedClaimId !== undefined &&
     detail.chain?.verifiedClaimId === verification.verifiedClaimId
   );
+}
+
+export function externalPaymentStatus(
+  detail: AgreementDetails,
+  verification: AgreementConditionDetails["verification"],
+): { label: string; tone: "blue" | "green" | "amber" | "red" } {
+  const lifecycle = agreementLifecycleMode(detail.metadata);
+  const paymentUnlocked = isEscrowPaymentUnlocked(detail, verification);
+  if (hasTimelineEvent(detail, "Withdrawn"))
+    return { label: "Withdrawn", tone: "green" };
+  if (
+    detail.role === "seller" &&
+    detail.chain &&
+    canWithdrawEscrowFunds(
+      detail.role,
+      detail.chain.state,
+      detail.chain.withdrawalAmount,
+    )
+  ) {
+    return { label: "Unlocked — withdrawal available", tone: "green" };
+  }
+  if (paymentUnlocked) return { label: "Unlocked", tone: "green" };
+  if (
+    verification?.status === "verification_failed" &&
+    verification.failureCode === "PROOF_UNAVAILABLE"
+  ) {
+    return { label: "Locked — proof unavailable", tone: "red" };
+  }
+  if (verification?.status === "verification_failed")
+    return { label: "Locked — verification failed", tone: "red" };
+  if (verification?.status === "verification_in_progress")
+    return { label: "Locked — verification pending", tone: "amber" };
+  if (verification?.status === "verified") {
+    if (!isVerifiedOnChain(detail, verification))
+      return { label: "Locked — claim not accepted", tone: "amber" };
+    if (lifecycle === "hybrid")
+      return { label: "Locked — buyer acceptance required", tone: "amber" };
+  }
+  return { label: "Locked — awaiting transaction hash", tone: "blue" };
+}
+
+export function claimSettlementStatus(
+  verification: AgreementConditionDetails["verification"],
+) {
+  if (verification?.status === "verification_in_progress")
+    return "Authorized claim not submitted";
+  if (verification?.status === "verification_failed")
+    return "No authorized claim";
+  return "Waiting for prerequisites";
+}
+
+export function conditionSummarySteps(
+  detail: AgreementDetails,
+  verification: AgreementConditionDetails["verification"],
+) {
+  const paymentUnlocked = isEscrowPaymentUnlocked(detail, verification);
+  const withdrawn = hasTimelineEvent(detail, "Withdrawn");
+  return [
+    {
+      label: "Transaction submitted",
+      status: verification ? "Complete" : "Current",
+      tone: verification ? "complete" : "current",
+    },
+    {
+      label: "Verified on-chain",
+      status: isVerifiedOnChain(detail, verification)
+        ? "Complete"
+        : verification?.status === "verification_failed"
+          ? "Failed"
+          : "Pending",
+      tone: isVerifiedOnChain(detail, verification)
+        ? "complete"
+        : verification?.status === "verification_failed"
+          ? "failed"
+          : "pending",
+    },
+    {
+      label: "Payment unlocked",
+      status: paymentUnlocked ? "Complete" : "Pending",
+      tone: paymentUnlocked ? "complete" : "pending",
+    },
+    {
+      label: "Withdraw",
+      status: withdrawn ? "Complete" : "Pending",
+      tone: withdrawn ? "complete" : "pending",
+    },
+  ];
+}
+
+export function conditionVerificationStages(
+  detail: AgreementDetails,
+  verification: AgreementConditionDetails["verification"],
+) {
+  const verified = verification?.status === "verified";
+  const verifiedOnChain = isVerifiedOnChain(detail, verification);
+  const paymentUnlocked = isEscrowPaymentUnlocked(detail, verification);
+  const withdrawalAvailable =
+    detail.role === "seller" &&
+    detail.chain !== undefined &&
+    canWithdrawEscrowFunds(
+      detail.role,
+      detail.chain.state,
+      detail.chain.withdrawalAmount,
+    );
+  const withdrawn = hasTimelineEvent(detail, "Withdrawn");
+  return [
+    stage(
+      1,
+      "Transaction hash submitted",
+      verification ? "Complete" : "Waiting for seller",
+      verification ? "complete" : "current",
+    ),
+    stage(
+      2,
+      "Proof requested",
+      verification ? "Complete" : "Not started",
+      verification ? "complete" : "pending",
+    ),
+    stage(
+      3,
+      "Proof unavailable or pending",
+      verification?.status === "verification_failed" &&
+        verification.failureCode === "PROOF_UNAVAILABLE"
+        ? "Proof unavailable"
+        : verification?.status === "verification_failed"
+          ? "Verification failed"
+          : verification
+            ? "Waiting for provider proof"
+            : "Not started",
+      verification?.status === "verification_failed"
+        ? "failed"
+        : verification
+          ? "current"
+          : "pending",
+    ),
+    stage(
+      4,
+      "Proof received",
+      verified ? "Complete" : "Not received yet",
+      verified ? "complete" : "pending",
+    ),
+    stage(
+      5,
+      "Proof validated",
+      verified ? "Complete" : "Not validated yet",
+      verified ? "complete" : "pending",
+    ),
+    stage(
+      6,
+      "Authorized claim submitted",
+      verifiedOnChain ? "Complete" : "Not submitted",
+      verifiedOnChain ? "complete" : "pending",
+    ),
+    stage(
+      7,
+      "Escrow payment unlocked",
+      paymentUnlocked
+        ? "Complete"
+        : externalPaymentStatus(detail, verification).label,
+      paymentUnlocked ? "complete" : "pending",
+    ),
+    stage(
+      8,
+      "Seller withdrawal available",
+      withdrawalAvailable ? "Available" : "Not available",
+      withdrawalAvailable ? "complete" : "pending",
+    ),
+    stage(
+      9,
+      "Seller withdrawn",
+      withdrawn ? "Complete" : "Pending",
+      withdrawn ? "complete" : "pending",
+    ),
+  ];
+}
+
+function stage(
+  index: number,
+  label: string,
+  status: string,
+  tone: "complete" | "current" | "pending" | "failed",
+) {
+  return { index, label, status, tone };
+}
+
+function isEscrowPaymentUnlocked(
+  detail: AgreementDetails,
+  verification: AgreementConditionDetails["verification"],
+) {
+  const lifecycle = agreementLifecycleMode(detail.metadata);
+  return (
+    isVerifiedOnChain(detail, verification) &&
+    detail.chain?.state === "Complete" &&
+    (lifecycle === "blockchain_condition_only" ||
+      detail.chain.withdrawalAmount !== "0" ||
+      hasTimelineEvent(detail, "WithdrawalCredited"))
+  );
+}
+
+function hasTimelineEvent(detail: AgreementDetails, name: string) {
+  return detail.timeline.some((event) => event.name === name);
 }
 
 export function hasExternalBlockchainCondition(detail: AgreementDetails) {
@@ -393,7 +701,7 @@ export function conditionStatusLabel(
   verifying = false,
 ) {
   if (verifying) return "Verification in progress";
-  if (verification?.status === "verified") return "Verified";
+  if (verification?.status === "verified") return "Verified on-chain";
   if (
     verification?.status === "verification_failed" &&
     verification.failureCode === "PROOF_UNAVAILABLE"

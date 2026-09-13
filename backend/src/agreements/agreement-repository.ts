@@ -120,10 +120,10 @@ export class SqlAgreementRepository implements AgreementRepository {
       await database.query(
         `INSERT INTO agreements
          (id, buyer, seller, arbitrator, required_amount, agreement_nonce, agreement_commitment,
-          evidence_policy, evidence_policy_commitment, evidence_registry, deployment_status,
+          evidence_policy, evidence_policy_commitment, evidence_registry, agreement_mode, deployment_status,
           escrow_address, deployment_transaction_hash, deployment_block_number, deployment_error,
           created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
         [
           agreement.id,
           agreement.buyer,
@@ -135,6 +135,7 @@ export class SqlAgreementRepository implements AgreementRepository {
           JSON.stringify(agreement.policy),
           agreement.evidencePolicyCommitment,
           agreement.evidenceRegistry,
+          agreement.agreementMode,
           agreement.deploymentStatus,
           agreement.escrowAddress ?? null,
           agreement.deploymentTransactionHash ?? null,
@@ -257,24 +258,37 @@ export class SqlAgreementRepository implements AgreementRepository {
     return agreements;
   }
 
-  async recordReconciliation(record: Parameters<AgreementRepository["recordReconciliation"]>[0]): Promise<void> {
+  async recordReconciliation(
+    record: Parameters<AgreementRepository["recordReconciliation"]>[0],
+  ): Promise<void> {
     await this.database.query(
       `INSERT INTO agreement_reconciliations
        (agreement_id,status,authoritative_source,mismatches,checked_at_block,created_at)
        VALUES ($1,$2,$3,$4::jsonb,$5,$6)`,
-      [record.agreementId, record.status, record.authoritativeSource, JSON.stringify(record.mismatches), record.checkedAtBlock, new Date().toISOString()],
+      [
+        record.agreementId,
+        record.status,
+        record.authoritativeSource,
+        JSON.stringify(record.mismatches),
+        record.checkedAtBlock,
+        new Date().toISOString(),
+      ],
     );
   }
 
   private async withDeliverables(
     agreement: AgreementMetadata,
   ): Promise<AgreementMetadata> {
-    const deliverableResult = await this.database.query<Record<string, unknown>>(
+    const deliverableResult = await this.database.query<
+      Record<string, unknown>
+    >(
       "SELECT * FROM agreement_deliverables WHERE agreement_id = $1 ORDER BY position, id",
       [agreement.id],
     );
     if (deliverableResult.rows.length === 0) return agreement;
-    const requirementResult = await this.database.query<Record<string, unknown>>(
+    const requirementResult = await this.database.query<
+      Record<string, unknown>
+    >(
       "SELECT * FROM agreement_evidence_requirements WHERE agreement_id = $1 ORDER BY deliverable_id, position, id",
       [agreement.id],
     );
@@ -344,6 +358,8 @@ function mapRow(row: Record<string, unknown>): AgreementMetadata {
     agreementCommitment: String(row.agreement_commitment),
     evidencePolicyCommitment: String(row.evidence_policy_commitment),
     evidenceRegistry: String(row.evidence_registry),
+    agreementMode: (row.agreement_mode ??
+      "application_work_evidence") as AgreementMetadata["agreementMode"],
     policy: row.evidence_policy as AgreementMetadata["policy"],
     deploymentStatus:
       row.deployment_status as AgreementMetadata["deploymentStatus"],

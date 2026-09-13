@@ -5,6 +5,10 @@ import type {
   AgreementDetails,
   WorkEvidenceSubmission,
 } from "@veyronis/shared";
+import {
+  agreementLifecycleMode,
+  hasApplicationEvidenceRequirements,
+} from "@veyronis/shared";
 import { HttpAgreementCreationClient } from "../agreement-client";
 
 export function WorkEvidencePanel({
@@ -171,7 +175,7 @@ export function WorkEvidencePanel({
                   {submission.submitter} · {submission.status}
                   {submission.reviewNote ? ` · ${submission.reviewNote}` : ""}
                 </small>
-                {(detail.role === "buyer" || detail.role === "arbitrator") &&
+                {detail.role === "buyer" &&
                   submission.status === "submitted" && (
                     <div className="dash-actions">
                       <button
@@ -231,7 +235,7 @@ export function WorkEvidencePanel({
           </p>
         </div>
       )}
-      {(detail.role === "buyer" || detail.role === "arbitrator") && (
+      {detail.role === "buyer" && (
         <label className="review-note">
           Review note for rejection (optional)
           <input
@@ -268,9 +272,9 @@ export function currentWorkEvidenceSubmissions(
 }
 
 export function hasWorkEvidenceRequirements(detail: AgreementDetails) {
-  return (detail.metadata.deliverables ?? []).some(
-    (deliverable) =>
-      deliverable.active && deliverable.evidenceRequirements.length > 0,
+  return (
+    agreementLifecycleMode(detail.metadata) !== "blockchain_condition_only" &&
+    hasApplicationEvidenceRequirements(detail.metadata)
   );
 }
 

@@ -46,7 +46,11 @@ import {
 } from "./agreement-terms-editor";
 import {
   agreementWizardSteps,
+  nextWizardStep,
   previousWizardStep,
+  visibleWizardSteps,
+  type AgreementWizardMode,
+  type AgreementWizardStep,
   wizardBackLabel,
 } from "./wizard-flow";
 import {
@@ -62,7 +66,7 @@ const REGISTRY = (process.env.NEXT_PUBLIC_EVIDENCE_REGISTRY_ADDRESS ??
   process.env.NEXT_PUBLIC_VEYRONIS_EVIDENCE_REGISTRY_ADDRESS) as string;
 type AgreementItem = AgreementDiscoveryItem;
 type WalletConnector = { getProvider(): Promise<unknown> } | undefined;
-type ConditionMode = "work" | "external" | "both";
+type ConditionMode = AgreementWizardMode;
 
 interface WizardForm {
   buyer: string;
@@ -293,6 +297,7 @@ function AgreementCard({
       <div className="live-contract-amount">
         <span>Escrow amount</span>
         <strong>{formatAmount(item.requiredAmount)} ETH</strong>
+        <small className="mode-pill">{discoveryConditionLabel(item)}</small>
       </div>
       <dl>
         <div>
@@ -368,6 +373,12 @@ function EscrowWizard({
       evidenceRegistry: form.evidenceRegistry,
       requiredAmount: toWei(form.requiredAmountEth),
       agreementNonce: form.agreementNonce,
+      agreementMode:
+        form.conditionMode === "external"
+          ? "blockchain_condition_only"
+          : form.conditionMode === "work"
+            ? "application_work_evidence"
+            : "hybrid",
       deliverables: form.deliverables,
       policy: externalCondition
         ? {
@@ -425,16 +436,16 @@ function EscrowWizard({
       (!form.requiredAmountEth || Number(form.requiredAmountEth) <= 0)
     )
       return setError("Enter a valid payment amount");
-    if (step === 3) {
+    if (step === 4) {
       const activeDeliverables = form.deliverables.filter(
         (deliverable) => deliverable.active,
       );
-      if (form.conditionMode !== "external" && activeDeliverables.length === 0)
+      if (activeDeliverables.length === 0)
         return setError("Add at least one active deliverable");
       if (activeDeliverables.some((deliverable) => !deliverable.title.trim()))
         return setError("Enter a title for every active deliverable");
     }
-    if (step === 4) {
+    if (step === 5) {
       const activeDeliverables = form.deliverables.filter(
         (deliverable) => deliverable.active,
       );
@@ -457,7 +468,7 @@ function EscrowWizard({
     }
     if (step === 5 && form.conditionMode !== "work" && !preview)
       return setError("Complete the external blockchain condition");
-    setStep((current) => Math.min(agreementWizardSteps.length, current + 1));
+    setStep(nextWizardStep(step, form.conditionMode));
   }
   async function deployAndFund() {
     const networkError = transactionNetworkError(
@@ -535,31 +546,14 @@ function EscrowWizard({
       />
       <div className="wizard-layout">
         <aside className="wizard-steps">
-          {agreementWizardSteps.map((label, index) => (
-            <div
-              className={
-                step === index + 1 ? "current" : step > index + 1 ? "done" : ""
-              }
-              key={label}
-            >
-              <span>{step > index + 1 ? "✓" : index + 1}</span>
+          {visibleWizardSteps(form.conditionMode).map((label) => (
+            <div className={wizardStepClass(step, label)} key={label}>
+              <span>
+                {step > wizardStepNumber(label) ? "✓" : wizardStepNumber(label)}
+              </span>
               <div>
                 <strong>{label}</strong>
-                <small>
-                  {index === 0
-                    ? "Wallet roles"
-                    : index === 1
-                      ? "Asset and amount"
-                      : index === 2
-                        ? "What is delivered"
-                        : index === 3
-                          ? "Proof of delivery"
-                          : index === 4
-                            ? "Cross-chain facts"
-                            : index === 5
-                              ? "Immutable terms"
-                              : "Two wallet transactions"}
-                </small>
+                <small>{wizardStepDescription(label)}</small>
               </div>
             </div>
           ))}
@@ -630,9 +624,22 @@ function EscrowWizard({
             </WizardSection>
           )}
           {step === 3 && (
+            <VerificationModeStep
+              mode={form.conditionMode}
+              onSelectMode={(conditionMode) =>
+                setForm((current) => ({
+                  ...current,
+                  conditionMode,
+                  deliverables:
+                    conditionMode === "external" ? [] : current.deliverables,
+                }))
+              }
+            />
+          )}
+          {step === 4 && (
             <WizardSection
-              title="Delivery & Evidence"
-              copy="Define what the seller must deliver and what they must provide to prove completion."
+              title="Application/work evidence"
+              copy="Define the deliverables and the evidence a buyer will review manually."
             >
               <DeliverablesEditor
                 deliverables={form.deliverables}
@@ -640,13 +647,6 @@ function EscrowWizard({
                   setForm((current) => ({ ...current, deliverables }))
                 }
               />
-            </WizardSection>
-          )}
-          {step === 4 && (
-            <WizardSection
-              title="Evidence Requirements"
-              copy="These are application-level proofs for delivery. Buyers and arbitrators review them manually."
-            >
               <EvidenceRequirementsEditor
                 deliverables={form.deliverables}
                 onChange={(deliverables) =>
@@ -656,7 +656,7 @@ function EscrowWizard({
             </WizardSection>
           )}
           {step === 5 && (
-            <AgreementConditionsStep form={form} update={update} />
+            <ExternalBlockchainConditionStep form={form} update={update} />
           )}
           {step === 6 && (
             <ReviewStep form={form} draft={draft} preview={preview} />
@@ -708,7 +708,10 @@ function EscrowWizard({
               <GlassButton
                 disabled={deploying || Boolean(agreementId)}
                 onClick={
-                  step === 1 ? close : () => setStep(previousWizardStep(step))
+                  step === 1
+                    ? close
+                    : () =>
+                        setStep(previousWizardStep(step, form.conditionMode))
                 }
               >
                 {wizardBackLabel(step, false)}
@@ -747,6 +750,25 @@ function toWei(value: string) {
   } catch {
     return "";
   }
+}
+
+function wizardStepNumber(label: AgreementWizardStep) {
+  return agreementWizardSteps.indexOf(label) + 1;
+}
+
+function wizardStepClass(step: number, label: AgreementWizardStep) {
+  const number = wizardStepNumber(label);
+  return step === number ? "current" : step > number ? "done" : "";
+}
+
+function wizardStepDescription(label: AgreementWizardStep) {
+  if (label === "Participants") return "Wallet roles";
+  if (label === "Payment") return "Asset and amount";
+  if (label === "Verification Mode") return "Settlement path";
+  if (label === "Work Requirements") return "Human review";
+  if (label === "External Blockchain Condition") return "Cross-chain facts";
+  if (label === "Review") return "Immutable terms";
+  return "Two wallet transactions";
 }
 function WizardSection({
   title,
@@ -802,7 +824,103 @@ function Review({ label, value }: { label: string; value: string }) {
   );
 }
 
-function AgreementConditionsStep({
+function VerificationModeStep({
+  mode,
+  onSelectMode,
+}: {
+  mode: ConditionMode;
+  onSelectMode: (mode: ConditionMode) => void;
+}) {
+  return (
+    <WizardSection
+      title="Choose how this agreement will be verified"
+      copy="Select the settlement path now. Only the fields required by that path will appear."
+    >
+      <div
+        className="condition-mode"
+        role="radiogroup"
+        aria-label="Verification mode"
+      >
+        <label>
+          <input
+            type="radio"
+            name="conditionMode"
+            checked={mode === "external"}
+            onChange={() => onSelectMode("external")}
+          />
+          <span>
+            <strong>External blockchain condition</strong>
+            <small>
+              For obligations that can be proven from blockchain transactions.
+            </small>
+          </span>
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="conditionMode"
+            checked={mode === "work"}
+            onChange={() => onSelectMode("work")}
+          />
+          <span>
+            <strong>Application/work evidence</strong>
+            <small>
+              For goods, delivery, software, design, services and other
+              obligations requiring human review.
+            </small>
+          </span>
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="conditionMode"
+            checked={mode === "both"}
+            onChange={() => onSelectMode("both")}
+          />
+          <span>
+            <strong>Both</strong>
+            <small>
+              For agreements that require blockchain verification and human
+              review.
+            </small>
+          </span>
+        </label>
+      </div>
+      <aside className="evidence-note mode-explanation">
+        {mode === "external" ? (
+          <>
+            <strong>Buyer approval is not required</strong>
+            <span>
+              Seller submits the transaction hash. Attestcoin/Creditcoin
+              verifies the blockchain facts. Once the escrow contract accepts
+              the authorized claim, the seller’s payment becomes withdrawable.
+            </span>
+          </>
+        ) : mode === "work" ? (
+          <>
+            <strong>Human review settles work</strong>
+            <span>
+              Seller submits work or delivery evidence. Buyer reviews and
+              accepts it. If the buyer is dissatisfied, they may request a
+              refund or open a dispute.
+            </span>
+          </>
+        ) : (
+          <>
+            <strong>Two requirements, two tracks</strong>
+            <span>
+              Blockchain verification does not replace human review of the
+              application-level requirements. Settlement waits for both
+              applicable components.
+            </span>
+          </>
+        )}
+      </aside>
+    </WizardSection>
+  );
+}
+
+function ExternalBlockchainConditionStep({
   form,
   update,
 }: {
@@ -819,47 +937,9 @@ function AgreementConditionsStep({
 
   return (
     <WizardSection
-      title="Agreement Conditions"
-      copy="Choose what must be satisfied before settlement. Work conditions are reviewed manually; external blockchain conditions are verified by Attestcoin on Creditcoin."
+      title="External blockchain condition"
+      copy="Define the objective source-chain transaction that satisfies this agreement."
     >
-      <div className="condition-mode">
-        <label>
-          <input
-            type="radio"
-            name="conditionMode"
-            checked={form.conditionMode === "work"}
-            onChange={() => update("conditionMode", "work")}
-          />
-          <span>
-            <strong>Work / Delivery</strong>
-            <small>Define what the seller must deliver.</small>
-          </span>
-        </label>
-        <label>
-          <input
-            type="radio"
-            name="conditionMode"
-            checked={form.conditionMode === "external"}
-            onChange={() => update("conditionMode", "external")}
-          />
-          <span>
-            <strong>External Blockchain Action</strong>
-            <small>Require a verifiable action on another blockchain.</small>
-          </span>
-        </label>
-        <label>
-          <input
-            type="radio"
-            name="conditionMode"
-            checked={form.conditionMode === "both"}
-            onChange={() => update("conditionMode", "both")}
-          />
-          <span>
-            <strong>Both</strong>
-            <small>Require delivery and an external blockchain action.</small>
-          </span>
-        </label>
-      </div>
       {external && (
         <>
           <div className="form-two">
@@ -976,7 +1056,7 @@ function ReviewStep({
   return (
     <WizardSection
       title="Review immutable terms"
-      copy="Confirm every participant, condition, deliverable, and evidence requirement before deployment."
+      copy="Confirm the verification mode, participants, conditions, and evidence requirements before deployment."
     >
       <div className="review-grid">
         <Review label="Buyer" value={draft.buyer} />
@@ -984,7 +1064,7 @@ function ReviewStep({
         <Review label="Arbitrator" value={draft.arbitrator} />
         <Review label="Payment" value={`${form.requiredAmountEth} ETH`} />
         <Review
-          label="Conditions"
+          label="Verification mode"
           value={conditionReviewLabel(form.conditionMode)}
         />
         <Review
@@ -1036,20 +1116,41 @@ function ReviewStep({
           ))}
       </div>
       <aside className="evidence-note">
-        <strong>Verification does not settle automatically</strong>
-        <span>
-          Work evidence and verified blockchain conditions support review.
-          Escrow settlement remains governed by the existing escrow lifecycle.
-        </span>
+        {form.conditionMode === "external" ? (
+          <>
+            <strong>Verified on-chain → Payment unlocked → Withdraw</strong>
+            <span>
+              The buyer does not confirm delivery or approve evidence. The
+              seller explicitly withdraws only after the escrow contract credits
+              the withdrawable balance.
+            </span>
+          </>
+        ) : form.conditionMode === "work" ? (
+          <>
+            <strong>Evidence submitted → Buyer review → Settlement</strong>
+            <span>
+              Buyer acceptance, refund approval, dispute, or arbitration
+              controls settlement.
+            </span>
+          </>
+        ) : (
+          <>
+            <strong>Blockchain and human review both required</strong>
+            <span>
+              Attestcoin/Creditcoin verifies the external condition; the buyer
+              still reviews the application-level requirements.
+            </span>
+          </>
+        )}
       </aside>
     </WizardSection>
   );
 }
 
 function conditionReviewLabel(mode: ConditionMode) {
-  if (mode === "external") return "External blockchain action";
-  if (mode === "both") return "Work / delivery and external blockchain action";
-  return "Work / delivery";
+  if (mode === "external") return "External blockchain condition";
+  if (mode === "both") return "Both";
+  return "Application/work evidence";
 }
 
 function toConditionUnits(value: string, decimals: string) {

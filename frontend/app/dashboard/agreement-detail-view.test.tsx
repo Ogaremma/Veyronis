@@ -109,10 +109,10 @@ describe("agreement withdrawal gating", () => {
 
   it("does not give buyer or arbitrator the seller withdrawal control", () => {
     expect(renderDetail(detailFor("buyer", "Complete"))).not.toContain(
-      ">Withdraw",
+      "Withdraw 1.0 ETH",
     );
     expect(renderDetail(detailFor("arbitrator", "Complete"))).not.toContain(
-      ">Withdraw",
+      "Withdraw 1.0 ETH",
     );
     expect(renderDetail(detailFor("buyer", "Refunded"))).toContain(
       "Withdraw 1.0 ETH",
@@ -148,5 +148,32 @@ describe("agreement guidance", () => {
     expect(html).not.toContain("Confirm delivery");
     expect(html).toContain("Request refund");
     expect(html).toContain("Open dispute");
+  });
+
+  it("keeps buyer acceptance and refund actions for work-only agreements", () => {
+    const detail = detailFor("buyer", "AwaitingDelivery", "0");
+    detail.actions = ["confirmDelivery", "requestRefund", "openDispute"];
+
+    const html = renderDetail(detail);
+
+    expect(html).toContain("Confirm delivery");
+    expect(html).toContain("Request refund");
+    expect(html).toContain("Open dispute");
+    expect(html).toContain("Submit application work evidence");
+  });
+
+  it("displays separate blockchain and human-review tracks for hybrid agreements", () => {
+    const detail = detailFor("seller", "AwaitingDelivery", "0");
+    detail.metadata.agreementMode = "hybrid";
+    detail.metadata.policy.evidenceType = id("SOURCE_PAYMENT");
+
+    const html = renderDetail(detail);
+
+    expect(html).toContain("Blockchain verification");
+    expect(html).toContain("Human review");
+    expect(html).toContain(
+      "Attestcoin/Creditcoin satisfies only the external condition",
+    );
+    expect(html).toContain("does not replace buyer acceptance");
   });
 });

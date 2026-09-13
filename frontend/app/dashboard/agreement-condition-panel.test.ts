@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
-import type { AgreementConditionVerification } from "@veyronis/shared";
+import type {
+  AgreementConditionVerification,
+  AgreementDetails,
+} from "@veyronis/shared";
 import {
   canSubmitCondition,
+  conditionSummarySteps,
+  conditionVerificationStages,
+  externalPaymentStatus,
   conditionStatusLabel,
   failureLabel,
   isVerifiedOnChain,
+  verificationProviderLabel,
 } from "./agreement-condition-panel";
 
 function verification(status: AgreementConditionVerification["status"]) {
@@ -26,7 +33,9 @@ describe("agreement condition panel", () => {
     expect(
       conditionStatusLabel(verification("verification_in_progress"), true),
     ).toBe("Verification in progress");
-    expect(conditionStatusLabel(verification("verified"))).toBe("Verified");
+    expect(conditionStatusLabel(verification("verified"))).toBe(
+      "Verified on-chain",
+    );
     expect(
       conditionStatusLabel({
         ...verification("verification_failed"),
@@ -87,4 +96,134 @@ describe("agreement condition panel", () => {
       ),
     ).toBe(true);
   });
+
+  it("does not unlock payment for a submitted hash, pending proof, or failed proof", () => {
+    const detail = blockchainOnlyDetail(
+      "AwaitingDelivery",
+      "0x" + "0".repeat(64),
+      "0",
+    );
+    expect(externalPaymentStatus(detail, undefined).label).toBe(
+      "Locked — awaiting transaction hash",
+    );
+    expect(
+      externalPaymentStatus(detail, verification("verification_in_progress"))
+        .label,
+    ).toBe("Locked — verification pending");
+    expect(
+      externalPaymentStatus(detail, {
+        ...verification("verification_failed"),
+        failureCode: "PROOF_UNAVAILABLE",
+      }).label,
+    ).toBe("Locked — proof unavailable");
+    expect(conditionSummarySteps(detail, undefined)[2]).toMatchObject({
+      label: "Payment unlocked",
+      status: "Pending",
+    });
+  });
+
+  it("does not show withdrawal for valid proof without an accepted on-chain claim", () => {
+    const detail = blockchainOnlyDetail(
+      "AwaitingDelivery",
+      "0x" + "4".repeat(64),
+      "0",
+    );
+    const verified = {
+      ...verification("verified"),
+      verifiedClaimId: "0x" + "3".repeat(64),
+    };
+
+    expect(externalPaymentStatus(detail, verified).label).toBe(
+      "Locked — claim not accepted",
+    );
+  });
+
+  it("shows withdrawal only from authoritative complete state and positive balance", () => {
+    const claimId = "0x" + "3".repeat(64);
+    const verified = { ...verification("verified"), verifiedClaimId: claimId };
+    const available = blockchainOnlyDetail("Complete", claimId, "100");
+    const withdrawn = {
+      ...available,
+      timeline: [{ name: "Withdrawn" }],
+    };
+
+    expect(externalPaymentStatus(available, verified).label).toBe(
+      "Unlocked — withdrawal available",
+    );
+    expect(
+      externalPaymentStatus(
+        blockchainOnlyDetail("Complete", claimId, "0"),
+        verified,
+      ).label,
+    ).toBe("Unlocked");
+    expect(externalPaymentStatus(withdrawn as never, verified).label).toBe(
+      "Withdrawn",
+    );
+  });
+
+  it("renders one current condition status and the nine verification states", () => {
+    const detail = blockchainOnlyDetail(
+      "AwaitingDelivery",
+      "0x" + "0".repeat(64),
+      "0",
+    );
+    const stages = conditionVerificationStages(
+      detail,
+      verification("verification_in_progress"),
+    );
+
+    expect(stages).toHaveLength(9);
+    expect(
+      stages.filter((stage) => stage.label === "Transaction hash submitted"),
+    ).toHaveLength(1);
+    expect(stages.map((stage) => stage.label)).toEqual([
+      "Transaction hash submitted",
+      "Proof requested",
+      "Proof unavailable or pending",
+      "Proof received",
+      "Proof validated",
+      "Authorized claim submitted",
+      "Escrow payment unlocked",
+      "Seller withdrawal available",
+      "Seller withdrawn",
+    ]);
+  });
+
+  it("reflects only providers that actually participated", () => {
+    expect(
+      verificationProviderLabel(
+        {
+          condition: {} as never,
+          verificationProviders: ["Attestcoin", "Creditcoin"],
+        },
+        true,
+      ),
+    ).toBe("Verified by Attestcoin + Creditcoin");
+    expect(
+      verificationProviderLabel(
+        {
+          condition: {} as never,
+          verificationProviders: ["Attestcoin"],
+        },
+        true,
+      ),
+    ).toBe("Verified by Attestcoin");
+  });
 });
+
+function blockchainOnlyDetail(
+  state: "AwaitingDelivery" | "Complete",
+  verifiedClaimId: string,
+  withdrawalAmount: string,
+): AgreementDetails {
+  return {
+    role: "seller",
+    metadata: {
+      agreementMode: "blockchain_condition_only",
+      policy: {},
+      deliverables: [],
+    },
+    chain: { state, verifiedClaimId, withdrawalAmount },
+    timeline: [],
+  } as unknown as AgreementDetails;
+}

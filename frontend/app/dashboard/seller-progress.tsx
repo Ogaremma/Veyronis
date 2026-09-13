@@ -22,6 +22,9 @@ export function sellerProgressSteps(
   conditionVerification?: AgreementConditionVerification,
 ): SellerProgressStep[] {
   const lifecycle = agreementLifecycleMode(detail.metadata);
+  const includeWorkEvidence =
+    lifecycle !== "blockchain_condition_only" &&
+    hasApplicationEvidenceRequirements(detail.metadata);
   const requirements = (detail.metadata.deliverables ?? [])
     .filter((deliverable) => deliverable.active)
     .flatMap((deliverable) => deliverable.evidenceRequirements);
@@ -36,21 +39,23 @@ export function sellerProgressSteps(
       .map((submission) => submission.requirementId),
   );
   const evidenceComplete =
-    requirements.length === 0 ||
-    [...requiredRequirementIds].every((id) => acceptedRequirementIds.has(id));
+    !includeWorkEvidence ||
+    (requirements.length > 0 &&
+      [...requiredRequirementIds].every((id) =>
+        acceptedRequirementIds.has(id),
+      ));
   const evidenceSubmitted = workEvidenceSubmissions.some(
     (submission) => submission.status !== "rejected",
   );
   const externalCondition = externalBlockchainConditionFromPolicy(
     detail.metadata.policy,
   );
-  const conditionComplete =
-    !externalCondition || conditionVerification?.status === "verified";
   const verifiedOnChain =
     externalCondition !== undefined &&
     conditionVerification?.status === "verified" &&
     detail.chain !== undefined &&
     detail.chain.verifiedClaimId === conditionVerification.verifiedClaimId;
+  const conditionComplete = !externalCondition || verifiedOnChain;
   const prerequisitesComplete = evidenceComplete && conditionComplete;
   const withdrawable = detail.chain
     ? canWithdrawEscrowFunds(
@@ -64,7 +69,7 @@ export function sellerProgressSteps(
     { label: "Review agreement terms", status: "Complete", tone: "complete" },
   ];
 
-  if (hasApplicationEvidenceRequirements(detail.metadata)) {
+  if (includeWorkEvidence) {
     steps.push({
       label: "Submit application work evidence",
       status: evidenceComplete
@@ -79,11 +84,12 @@ export function sellerProgressSteps(
   if (externalCondition) {
     steps.push({
       label: "Submit external transaction hash",
-      status:
-        conditionVerification?.status === "verified"
-          ? "Verified"
-          : conditionVerification?.status === "verification_failed"
-            ? "Verification failed"
+      status: verifiedOnChain
+        ? "Verified on-chain"
+        : conditionVerification?.status === "verification_failed"
+          ? "Verification failed"
+          : conditionVerification?.status === "verification_in_progress"
+            ? "Proof requested"
             : "Pending",
       tone: conditionComplete ? "complete" : "current",
     });
@@ -101,9 +107,16 @@ export function sellerProgressSteps(
       : {
           label: "Verification and buyer acceptance",
           status: prerequisitesComplete
-            ? "Current"
+            ? detail.chain?.state === "Complete"
+              ? "Complete"
+              : "Awaiting buyer acceptance"
             : "Waiting for prerequisites",
-          tone: prerequisitesComplete ? "current" : "pending",
+          tone:
+            prerequisitesComplete && detail.chain?.state === "Complete"
+              ? "complete"
+              : prerequisitesComplete
+                ? "current"
+                : "pending",
         },
     {
       label: "Withdraw only after contract credit",

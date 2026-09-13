@@ -20,6 +20,7 @@ const metadata: AgreementMetadata = {
   agreementNonce: id("nonce"),
   agreementCommitment: id("agreement"),
   evidencePolicyCommitment: id("policy"),
+  agreementMode: "blockchain_condition_only",
   deploymentStatus: "DEPLOYED",
   escrowAddress: "0x5000000000000000000000000000000000000005",
   createdAt: new Date(0).toISOString(),

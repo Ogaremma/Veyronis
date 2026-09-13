@@ -238,6 +238,20 @@ describe("AttestcoinVerifier", () => {
     });
 
     expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.verifiedFacts).toMatchObject({
+        sourceChainKey: 1,
+        sourceTransactionHash: transactionHash,
+        sourceBlockNumber: 100,
+        chainId: "1",
+        sender: buyer,
+        recipient: seller,
+        amount: "100",
+        transactionIncluded: true,
+        transactionSucceeded: true,
+        conditionMatch: true,
+      });
+    }
     expect(registry.submitted).toBeUndefined();
     expect(registry.conditionSubmitted?.evidenceCommitment).toBe(
       evidenceCommitment,

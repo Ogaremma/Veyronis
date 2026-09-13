@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import pg from "pg";
 
-const connectionString = process.env.DATABASE_URL ?? "postgres://postgres@127.0.0.1:55432/veyronis";
+const connectionString =
+  process.env.DATABASE_URL ?? "postgres://postgres@127.0.0.1:55432/veyronis";
 const pool = new pg.Pool({ connectionString });
 try {
   for (const migration of [
@@ -10,6 +11,7 @@ try {
     "003_create_work_evidence.sql",
     "004_create_agreement_conditions.sql",
     "005_unique_verified_condition_transactions.sql",
+    "006_add_agreement_mode.sql",
   ]) {
     await pool.query(await readFile(`backend/sql/${migration}`, "utf8"));
     console.log(`Applied ${migration}`);

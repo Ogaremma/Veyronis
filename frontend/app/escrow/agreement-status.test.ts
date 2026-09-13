@@ -151,12 +151,14 @@ describe("live contract status", () => {
 
     expect(discoveryDisplayStatus(pending)).toBe("Verification Pending");
     expect(discoveryDisplayStatus(unlocked)).toBe(
-      "Verified / Payment Unlocked",
+      "Verified on-chain / Payment unlocked",
     );
-    expect(discoveryConditionLabel(pending)).toBe("External blockchain action");
+    expect(discoveryConditionLabel(pending)).toBe(
+      "External blockchain condition",
+    );
     expect(discoveryVerificationLabel(pending)).toBe("Verification pending");
     expect(discoveryVerificationLabel(unlocked)).toBe(
-      "Verified / Payment Unlocked",
+      "Verified on-chain / Payment unlocked",
     );
   });
 });

@@ -4,11 +4,14 @@ import type {
 } from "@veyronis/shared";
 import type { ParameterizedQueryExecutor } from "./agreement-repository.js";
 
-export interface AgreementConditionVerificationRecord
-  extends Omit<
-    AgreementConditionVerification,
-    "verifiedClaimId" | "verifiedAmount" | "failureCode" | "failureMessage" | "verifiedAt"
-  > {
+export interface AgreementConditionVerificationRecord extends Omit<
+  AgreementConditionVerification,
+  | "verifiedClaimId"
+  | "verifiedAmount"
+  | "failureCode"
+  | "failureMessage"
+  | "verifiedAt"
+> {
   status: Extract<AgreementConditionStatus, "verification_in_progress">;
 }
 
@@ -16,6 +19,7 @@ export interface AgreementConditionVerificationUpdate {
   status: Exclude<AgreementConditionStatus, "verification_in_progress">;
   verifiedClaimId?: string;
   verifiedAmount?: string;
+  verifiedFacts?: AgreementConditionVerification["verifiedFacts"];
   failureCode?: string;
   failureMessage?: string;
   verifiedAt?: string;
@@ -43,10 +47,11 @@ export interface AgreementConditionVerificationRepository {
   ): Promise<AgreementConditionVerification | undefined>;
 }
 
-export class InMemoryAgreementConditionVerificationRepository
-  implements AgreementConditionVerificationRepository
-{
-  private readonly verifications = new Map<string, AgreementConditionVerification>();
+export class InMemoryAgreementConditionVerificationRepository implements AgreementConditionVerificationRepository {
+  private readonly verifications = new Map<
+    string,
+    AgreementConditionVerification
+  >();
 
   async startVerification(
     verification: AgreementConditionVerificationRecord,
@@ -98,6 +103,9 @@ export class InMemoryAgreementConditionVerificationRepository
       ...(update.verifiedAmount !== undefined
         ? { verifiedAmount: update.verifiedAmount }
         : {}),
+      ...(update.verifiedFacts !== undefined
+        ? { verifiedFacts: update.verifiedFacts }
+        : {}),
       ...(update.failureCode !== undefined
         ? { failureCode: update.failureCode }
         : {}),
@@ -118,7 +126,9 @@ export class InMemoryAgreementConditionVerificationRepository
   ): Promise<AgreementConditionVerification | undefined> {
     const latest = [...this.verifications.values()]
       .filter((verification) => verification.agreementId === agreementId)
-      .sort((left, right) => right.submittedAt.localeCompare(left.submittedAt))[0];
+      .sort((left, right) =>
+        right.submittedAt.localeCompare(left.submittedAt),
+      )[0];
     return latest ? structuredClone(latest) : undefined;
   }
 
@@ -147,9 +157,7 @@ export class InMemoryAgreementConditionVerificationRepository
   }
 }
 
-export class SqlAgreementConditionVerificationRepository
-  implements AgreementConditionVerificationRepository
-{
+export class SqlAgreementConditionVerificationRepository implements AgreementConditionVerificationRepository {
   constructor(private readonly database: ParameterizedQueryExecutor) {}
 
   async startVerification(
@@ -163,6 +171,7 @@ export class SqlAgreementConditionVerificationRepository
        DO UPDATE SET status='verification_in_progress',
          verified_claim_id=NULL,
          verified_amount=NULL,
+         verified_facts=NULL,
          failure_code=NULL,
          failure_message=NULL,
          verified_at=NULL,
@@ -189,7 +198,8 @@ export class SqlAgreementConditionVerificationRepository
       verification.agreementId,
       verification.transactionHash,
     );
-    if (!existing) throw new Error("Condition verification could not be started");
+    if (!existing)
+      throw new Error("Condition verification could not be started");
     return { verification: existing, claimed: false };
   }
 
@@ -199,14 +209,16 @@ export class SqlAgreementConditionVerificationRepository
   ): Promise<AgreementConditionVerification | undefined> {
     const result = await this.database.query<Record<string, unknown>>(
       `UPDATE agreement_condition_verifications
-       SET status=$2, verified_claim_id=$3, verified_amount=$4, failure_code=$5,
-           failure_message=$6, verified_at=$7, updated_at=$8
+       SET status=$2, verified_claim_id=$3, verified_amount=$4,
+           verified_facts=$5::jsonb, failure_code=$6, failure_message=$7,
+           verified_at=$8, updated_at=$9
        WHERE id=$1 RETURNING *`,
       [
         id,
         update.status,
         update.verifiedClaimId ?? null,
         update.verifiedAmount ?? null,
+        update.verifiedFacts ? JSON.stringify(update.verifiedFacts) : null,
         update.failureCode ?? null,
         update.failureMessage ?? null,
         update.verifiedAt ?? null,
@@ -265,6 +277,13 @@ function mapVerificationRow(
       : {}),
     ...(row.verified_amount
       ? { verifiedAmount: String(row.verified_amount) }
+      : {}),
+    ...(row.verified_facts
+      ? {
+          verifiedFacts: row.verified_facts as NonNullable<
+            AgreementConditionVerification["verifiedFacts"]
+          >,
+        }
       : {}),
     ...(row.failure_code ? { failureCode: String(row.failure_code) } : {}),
     ...(row.failure_message

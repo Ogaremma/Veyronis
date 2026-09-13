@@ -73,14 +73,11 @@ export function AgreementDetailView({
     return action !== "withdraw" || withdrawable;
   });
   const primary = visibleActions[0];
-  const progressSteps =
-    detail.role === "seller"
-      ? sellerProgressSteps(
-          detail,
-          workEvidenceSubmissions,
-          conditionVerification,
-        )
-      : undefined;
+  const progressSteps = sellerProgressSteps(
+    detail,
+    workEvidenceSubmissions,
+    conditionVerification,
+  );
   return (
     <>
       {detail.reconciliation?.status === "METADATA_STALE" && (
@@ -92,6 +89,31 @@ export function AgreementDetailView({
         <div className="section-heading">
           <span className="dash-eyebrow">AGREEMENT OVERVIEW</span>
           <h2>Contract terms and participants</h2>
+        </div>
+        <div className="detail-badges">
+          <StatusBadge tone={modeTone(lifecycle)}>
+            {modeLabel(lifecycle)}
+          </StatusBadge>
+          <StatusBadge tone={agreementStatusTone(chain.state)}>
+            Escrow {chain.state}
+          </StatusBadge>
+          <StatusBadge tone={withdrawable ? "green" : "amber"}>
+            {withdrawable ? "Payment withdrawable" : "Payment locked"}
+          </StatusBadge>
+        </div>
+        <div className="participant-grid">
+          <article>
+            <span>Buyer</span>
+            <strong>{shortAddress(chain.buyer)}</strong>
+          </article>
+          <article>
+            <span>Seller</span>
+            <strong>{shortAddress(chain.seller)}</strong>
+          </article>
+          <article>
+            <span>Arbitrator</span>
+            <strong>{shortAddress(chain.arbitrator)}</strong>
+          </article>
         </div>
         <dl className="overview-grid">
           <dt>Escrow address</dt>
@@ -116,26 +138,60 @@ export function AgreementDetailView({
           </dd>
           <dt>Network</dt>
           <dd>{getNetworkName(requiredTransactionChainId())}</dd>
-          <dt>Condition</dt>
-          <dd>
-            {lifecycle === "blockchain_condition_only"
-              ? "External blockchain action"
-              : lifecycle === "hybrid"
-                ? "Blockchain + work evidence"
-                : "Application work evidence"}
-          </dd>
+          <dt>Verification mode</dt>
+          <dd>{modeLabel(lifecycle)}</dd>
           <dt>Agreement commitment</dt>
           <dd className="dash-mono">{chain.agreementCommitment}</dd>
           <dt>Evidence policy commitment</dt>
           <dd className="dash-mono">{chain.evidencePolicyCommitment}</dd>
         </dl>
       </section>
-      {detail.role === "seller" && (
-        <section className="detail-section">
-          <div className="section-heading">
-            <span className="dash-eyebrow">SELLER PROGRESS</span>
-            <h2>Required order of operations</h2>
+      <section className="detail-section">
+        <div className="section-heading">
+          <span className="dash-eyebrow">AGREEMENT PROGRESS</span>
+          <h2>Required order of operations</h2>
+        </div>
+        {lifecycle === "hybrid" ? (
+          <div className="hybrid-track-grid">
+            <article className="hybrid-track">
+              <span>Blockchain verification</span>
+              <StatusBadge
+                tone={
+                  conditionVerification?.status === "verified"
+                    ? "green"
+                    : "blue"
+                }
+              >
+                {conditionVerification?.status === "verified"
+                  ? "Verified on-chain"
+                  : conditionVerification?.status === "verification_failed"
+                    ? "Verification failed"
+                    : "Pending verification"}
+              </StatusBadge>
+              <p>
+                Attestcoin/Creditcoin satisfies only the external condition.
+              </p>
+            </article>
+            <article className="hybrid-track">
+              <span>Human review</span>
+              <StatusBadge
+                tone={chain.state === "Complete" ? "green" : "amber"}
+              >
+                {chain.state === "Complete"
+                  ? "Accepted"
+                  : chain.state === "RefundRequested"
+                    ? "Refund requested"
+                    : chain.state === "Disputed"
+                      ? "Disputed"
+                      : "Buyer review required"}
+              </StatusBadge>
+              <p>
+                Blockchain verification does not replace buyer acceptance of
+                work.
+              </p>
+            </article>
           </div>
+        ) : (
           <ol className="seller-flow">
             {progressSteps?.map((step) => (
               <li key={step.label} className={step.tone}>
@@ -144,13 +200,13 @@ export function AgreementDetailView({
               </li>
             ))}
           </ol>
-          <p className="dash-muted">
-            Progress reflects configured requirements, verification status, and
-            authoritative contract state. Seller withdrawal appears only after
-            the escrow contract credits the seller.
-          </p>
-        </section>
-      )}
+        )}
+        <p className="dash-muted">
+          Progress reflects configured requirements, verification status, and
+          authoritative contract state. Seller withdrawal appears only after the
+          escrow contract credits the seller.
+        </p>
+      </section>
       <section className="detail-section">
         <div className="section-heading">
           <span className="dash-eyebrow">LIFECYCLE</span>
@@ -306,4 +362,23 @@ function actionLabel(
     return `Fund Contract ? ${formatEther(required)} ETH`;
   if (action === "withdraw") return `Withdraw ${formatEther(withdrawal)} ETH`;
   return labels[action];
+}
+
+function modeLabel(lifecycle: ReturnType<typeof agreementLifecycleMode>) {
+  if (lifecycle === "blockchain_condition_only")
+    return "External blockchain condition";
+  if (lifecycle === "hybrid") return "Blockchain + work evidence";
+  return "Application/work evidence";
+}
+
+function modeTone(
+  lifecycle: ReturnType<typeof agreementLifecycleMode>,
+): "blue" | "green" | "amber" {
+  if (lifecycle === "blockchain_condition_only") return "blue";
+  if (lifecycle === "hybrid") return "amber";
+  return "green";
+}
+
+function shortAddress(address: string) {
+  return `${address.slice(0, 10)}...${address.slice(-8)}`;
 }
