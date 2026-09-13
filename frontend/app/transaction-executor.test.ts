@@ -23,4 +23,17 @@ describe("wallet transaction lifecycle", () => {
     await executeWalletTransaction(async () => ({ hash: "0x123", wait: async () => ({ status: 1, blockNumber: 11, confirmations: async () => 1 }) }), async () => { throw new Error("refresh failed"); }, (value) => failed.push(value));
     expect(failed.at(-1)?.status).toBe("RECONCILIATION_FAILED");
   });
+
+  it("keeps a successful transaction pending when reconciliation is stale", async () => {
+    const updates: TransactionReceiptInfo[] = [];
+    await executeWalletTransaction(
+      async () => ({ hash: "0xabc", wait: async () => ({ status: 1, blockNumber: 12, confirmations: async () => 1 }) }),
+      async () => ({ status: "PENDING", message: "Funding submitted, waiting for chain reconciliation." }),
+      value => updates.push(value),
+    );
+    expect(updates.at(-1)).toMatchObject({
+      status: "AWAITING_RECONCILIATION",
+      message: "Funding submitted, waiting for chain reconciliation.",
+    });
+  });
 });

@@ -2,6 +2,7 @@ import { AbiCoder, ZeroAddress, id, keccak256 } from "ethers";
 import { describe, expect, it } from "vitest";
 import {
   BLOCKCHAIN_CONDITION_DISABLED_EVIDENCE_TYPE,
+  canWithdrawEscrowFunds,
   computeAgreementCommitment,
   computeEvidencePolicyCommitment,
   evidencePolicySchema,
@@ -208,5 +209,19 @@ describe("canonical agreement commitments", () => {
         evidenceType: BLOCKCHAIN_CONDITION_DISABLED_EVIDENCE_TYPE,
       }),
     ).toBeUndefined();
+  });
+});
+
+describe("withdrawal eligibility", () => {
+  it("requires the settled recipient role, terminal state, and positive balance", () => {
+    for (const state of ["AwaitingPayment", "AwaitingDelivery", "Disputed"] as const) {
+      expect(canWithdrawEscrowFunds("seller", state, "100")).toBe(false);
+    }
+    expect(canWithdrawEscrowFunds("seller", "Complete", "100")).toBe(true);
+    expect(canWithdrawEscrowFunds("buyer", "Refunded", "100")).toBe(true);
+    expect(canWithdrawEscrowFunds("seller", "Refunded", "100")).toBe(false);
+    expect(canWithdrawEscrowFunds("buyer", "Complete", "100")).toBe(false);
+    expect(canWithdrawEscrowFunds("arbitrator", "Complete", "100")).toBe(false);
+    expect(canWithdrawEscrowFunds("seller", "Complete", "0")).toBe(false);
   });
 });

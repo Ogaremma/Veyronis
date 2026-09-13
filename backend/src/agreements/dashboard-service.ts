@@ -4,9 +4,10 @@ import type {
   AgreementAction,
   AgreementDetails,
   AgreementMetadata,
+  EscrowState,
   ParticipantRole,
 } from "@veyronis/shared";
-import { isTerminalEscrowState } from "@veyronis/shared";
+import { canWithdrawEscrowFunds, isTerminalEscrowState } from "@veyronis/shared";
 import type { AgreementRepository } from "./agreement-repository.js";
 import type { AgreementContractReader } from "./contract-read-layer.js";
 import { AgreementReconciliationService } from "./reconciliation-service.js";
@@ -94,7 +95,7 @@ function roleFor(
 }
 export function actionsFor(
   role: ParticipantRole,
-  state: string,
+  state: EscrowState,
   withdrawal: bigint,
 ): AgreementAction[] {
   const actions: AgreementAction[] = [];
@@ -110,6 +111,8 @@ export function actionsFor(
     actions.push("openDispute");
   if (role === "arbitrator" && state === "Disputed")
     actions.push("resolveRelease", "resolveRefund");
-  if (withdrawal > 0n) actions.push("withdraw");
+  if (canWithdrawEscrowFunds(role, state, withdrawal)) {
+    actions.push("withdraw");
+  }
   return actions;
 }

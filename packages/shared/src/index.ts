@@ -268,6 +268,24 @@ export const terminalEscrowStates = new Set<EscrowState>([
 export const isTerminalEscrowState = (state: EscrowState): boolean =>
   terminalEscrowStates.has(state);
 
+export function canWithdrawEscrowFunds(
+  role: ParticipantRole,
+  state: EscrowState,
+  withdrawalAmount: string | bigint,
+): boolean {
+  let amount: bigint;
+  try {
+    amount = BigInt(withdrawalAmount);
+  } catch {
+    return false;
+  }
+  if (amount <= 0n) return false;
+  return (
+    (role === "seller" && state === "Complete") ||
+    (role === "buyer" && state === "Refunded")
+  );
+}
+
 export const participantRoleSchema = z.enum(["buyer", "seller", "arbitrator"]);
 export type ParticipantRole = z.infer<typeof participantRoleSchema>;
 
@@ -394,6 +412,7 @@ export type TransactionStatus =
   | "CONFIRMING"
   | "CONFIRMED"
   | "RECONCILING"
+  | "AWAITING_RECONCILIATION"
   | "COMPLETE"
   | "USER_REJECTED"
   | "TRANSACTION_REVERTED"
@@ -406,6 +425,7 @@ export interface TransactionReceiptInfo {
   blockNumber?: string;
   confirmations?: number;
   error?: string;
+  message?: string;
   explorerUrl?: string;
 }
 

@@ -1,5 +1,5 @@
 import React from "react";
-import type { AgreementAction, AgreementDetails, TransactionReceiptInfo } from "@veyronis/shared";
+import { canWithdrawEscrowFunds, type AgreementAction, type AgreementDetails, type TransactionReceiptInfo } from "@veyronis/shared";
 import { formatEther, ZeroHash } from "ethers";
 import { AgreementLifecycle } from "./agreement-lifecycle";
 
@@ -17,7 +17,9 @@ export function AgreementDetailView({ detail, transaction, execute }: {
   const chain = detail.chain;
   if (!chain) return <p className="dash-muted">This agreement has not been deployed.</p>;
   const busy = !["IDLE", "COMPLETE", "USER_REJECTED", "TRANSACTION_REVERTED", "RPC_ERROR", "RECONCILIATION_FAILED"].includes(transaction.status);
-  const primary = detail.actions[0];
+  const withdrawable = canWithdrawEscrowFunds(detail.role, chain.state, chain.withdrawalAmount);
+  const visibleActions = detail.actions.filter(action => action !== "withdraw" || withdrawable);
+  const primary = visibleActions[0];
   return <>
     {detail.reconciliation?.status === "METADATA_STALE" && <aside className="reconciliation-note">
       Blockchain state is authoritative. Metadata is being synchronized.
@@ -35,10 +37,22 @@ export function AgreementDetailView({ detail, transaction, execute }: {
         <dt>Evidence policy commitment</dt><dd className="dash-mono">{chain.evidencePolicyCommitment}</dd>
       </dl>
     </section>
+    {detail.role === "seller" && <section className="detail-section">
+      <div className="section-heading"><span className="dash-eyebrow">SELLER FLOW</span><h2>Required order of operations</h2></div>
+      <ol className="seller-flow">
+        <li>Review agreement terms</li>
+        <li>Submit work or delivery evidence</li>
+        <li>Complete the external blockchain condition, if configured</li>
+        <li>Wait for verification and review</li>
+        <li>Buyer accepts delivery or arbitrator resolves the dispute</li>
+        <li>Settlement balance becomes available after the contract credits it</li>
+      </ol>
+      <p className="dash-muted">Proof verification is advisory input. It does not automatically release funds.</p>
+    </section>}
     <section className="detail-section"><div className="section-heading"><span className="dash-eyebrow">LIFECYCLE</span><h2>Authoritative escrow state</h2></div><AgreementLifecycle state={chain.state} refundRequested={detail.timeline.some(event => event.name === "RefundRequested")} disputed={detail.timeline.some(event => event.name === "DisputeOpened")} /></section>
     <section className="detail-grid">
       <div className="dash-panel action-panel"><span className="dash-eyebrow">AVAILABLE ACTION</span><h2>{primary ? actionLabel(primary, chain.requiredAmount, chain.withdrawalAmount) : "No action available"}</h2>
-        <div className="dash-actions">{detail.actions.map(action => <button className={action === primary ? "dash-primary" : "dash-action"} disabled={busy} key={action} onClick={() => execute(action)}>{actionLabel(action, chain.requiredAmount, chain.withdrawalAmount)}</button>)}</div>
+        <div className="dash-actions">{visibleActions.map(action => <button className={action === primary ? "dash-primary" : "dash-action"} disabled={busy} key={action} onClick={() => execute(action)}>{actionLabel(action, chain.requiredAmount, chain.withdrawalAmount)}</button>)}</div>
         {!primary && <p className="dash-muted">Your wallet has no valid action in the current on-chain state.</p>}
       </div>
       <div className="dash-panel receipt-panel"><span className="dash-eyebrow">TRANSACTION STATUS</span><h2>{transaction.status.replaceAll("_", " ")}</h2>
@@ -46,6 +60,7 @@ export function AgreementDetailView({ detail, transaction, execute }: {
         {transaction.blockNumber && <p>Confirmed in block {transaction.blockNumber}</p>}
         {transaction.explorerUrl && <a href={transaction.explorerUrl} target="_blank" rel="noreferrer">View transaction</a>}
         {transaction.error && <p className="dash-error">{transaction.error}</p>}
+        {transaction.message && <p className="dash-muted">{transaction.message}</p>}
       </div>
     </section>
     <section className="detail-grid">
@@ -53,9 +68,9 @@ export function AgreementDetailView({ detail, transaction, execute }: {
         <p className="dash-muted">Evidence informs the agreement and arbitrator. It does not automatically resolve a dispute or move funds.</p>
         <dl><dt>Active commitment</dt><dd className="dash-mono">{chain.activeEvidenceCommitment}</dd><dt>Verified claim</dt><dd className="dash-mono">{chain.verifiedClaimId}</dd></dl>
       </div>
-      <div className="dash-panel"><span className="dash-eyebrow">WITHDRAWAL</span><h2>{formatEther(chain.withdrawalAmount)} ETH available</h2><p className="dash-mono">{detail.role === "buyer" ? chain.buyer : detail.role === "seller" ? chain.seller : chain.arbitrator}</p>
-        <button className="dash-primary" disabled={!detail.actions.includes("withdraw") || busy} onClick={() => execute("withdraw")}>Withdraw {formatEther(chain.withdrawalAmount)} ETH</button>
-      </div>
+      {withdrawable && <div className="dash-panel"><span className="dash-eyebrow">WITHDRAWAL</span><h2>{formatEther(chain.withdrawalAmount)} ETH available</h2><p className="dash-mono">{detail.role === "buyer" ? chain.buyer : detail.role === "seller" ? chain.seller : chain.arbitrator}</p>
+        <button className="dash-primary" disabled={busy} onClick={() => execute("withdraw")}>Withdraw {formatEther(chain.withdrawalAmount)} ETH</button>
+      </div>}
     </section>
     <section className="dash-panel dash-timeline"><span className="dash-eyebrow">TRANSACTION ACTIVITY</span><h2>Contract and evidence events</h2>
       {detail.timeline.length === 0 ? <p className="dash-muted">No contract events indexed yet.</p> : detail.timeline.map(event => <div className="timeline-event" key={`${event.transactionHash}-${event.logIndex}`}><span className="timeline-dot"/><div><strong>{event.name}</strong>{event.advisory && <span className="advisory">Verified on-chain evidence</span>}<p className="dash-muted">Block {event.blockNumber}{event.timestamp ? ` / ${new Date(event.timestamp).toLocaleString()}` : ""}</p><p className="dash-mono">{event.actor ?? "Participant unavailable"} / {event.transactionHash}</p></div></div>)}

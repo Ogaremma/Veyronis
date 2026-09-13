@@ -1,5 +1,9 @@
 import type { TransactionReceiptInfo, TransactionStatus } from "@veyronis/shared";
 
+export type WalletReconciliationResult =
+  | { status: "CONFIRMED" }
+  | { status: "PENDING"; message: string };
+
 export interface SubmittedTransaction {
   hash: string;
   wait(confirmations?: number): Promise<{
@@ -11,7 +15,7 @@ export interface SubmittedTransaction {
 
 export async function executeWalletTransaction(
   submit: () => Promise<SubmittedTransaction>,
-  reconcile: () => Promise<void>,
+  reconcile: () => Promise<WalletReconciliationResult | void>,
   update: (receipt: TransactionReceiptInfo) => void,
   explorer?: (hash: string) => string | undefined,
 ): Promise<void> {
@@ -44,7 +48,15 @@ export async function executeWalletTransaction(
     update({ ...confirmed, status: "CONFIRMED" });
     update({ ...confirmed, status: "RECONCILING" });
     try {
-      await reconcile();
+      const reconciliation = await reconcile();
+      if (reconciliation?.status === "PENDING") {
+        update({
+          ...confirmed,
+          status: "AWAITING_RECONCILIATION",
+          message: reconciliation.message,
+        });
+        return;
+      }
       update({ ...confirmed, status: "COMPLETE" });
     } catch (error) {
       update({ ...confirmed, status: "RECONCILIATION_FAILED", error: errorMessage(error) });

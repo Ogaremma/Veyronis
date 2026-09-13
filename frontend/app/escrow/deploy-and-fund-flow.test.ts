@@ -90,4 +90,26 @@ describe("deploy and fund flow", () => {
     expect(getAgreement).toHaveBeenCalledWith(deployed.id);
     expect(getAgreement).toHaveBeenCalledTimes(2);
   });
+
+  it("does not optimistically mark funding complete while reconciliation waits", async () => {
+    const createAndDeploy = vi.fn(async () => deployed);
+    const getAgreement = vi.fn()
+      .mockResolvedValueOnce(details("AwaitingPayment"))
+      .mockResolvedValueOnce(details("AwaitingDelivery"));
+    const fundEscrow = vi.fn(async (): Promise<TransactionReceiptInfo> => ({
+      status: "AWAITING_RECONCILIATION",
+      message: "Funding submitted, waiting for chain reconciliation.",
+    }));
+
+    const result = await deployAndFundAgreement({
+      draft: {} as never,
+      createAndDeploy,
+      getAgreement,
+      fundEscrow,
+    });
+
+    expect(result.funded).toBe(false);
+    expect(result.state).toBe("AwaitingDelivery");
+    expect(result.transaction.message).toBe("Funding submitted, waiting for chain reconciliation.");
+  });
 });

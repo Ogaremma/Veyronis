@@ -10,7 +10,12 @@ import {
 } from "../transaction-network-guard";
 import { executeWalletTransaction } from "../transaction-executor";
 
-const escrowFundingAbi = ["function deposit() payable"] as const;
+const escrowFundingAbi = [
+  "function state() view returns (uint8)",
+  "function depositedAmount() view returns (uint256)",
+  "function requiredAmount() view returns (uint256)",
+  "function deposit() payable",
+] as const;
 
 export interface EscrowFundingChecks {
   walletAddress: string | undefined;
@@ -59,7 +64,7 @@ export async function fundEscrow(input: {
   walletAddress: string | undefined;
   walletChainId: number | undefined;
   details: AgreementDetails;
-  reconcile: () => Promise<void>;
+  reconcile: () => Promise<AgreementDetails | void>;
   onTransaction?: (receipt: TransactionReceiptInfo) => void;
 }): Promise<TransactionReceiptInfo> {
   const provider = new BrowserProvider(await input.getProvider() as never);
@@ -87,13 +92,46 @@ export async function fundEscrow(input: {
     signer,
   );
   const requiredAmount = BigInt(input.details.chain!.requiredAmount);
+  const preFundingState = await readFundingState(contract);
+  if (preFundingState.state !== 0) {
+    throw new Error("Funding is unavailable because the escrow is not awaiting payment.");
+  }
+  if (preFundingState.requiredAmount !== requiredAmount) {
+    throw new Error("The escrow required amount does not match agreement metadata.");
+  }
+  if (preFundingState.depositedAmount !== 0n) {
+    throw new Error("The escrow is not awaiting a new deposit.");
+  }
 
   let latestReceipt: TransactionReceiptInfo = { status: "IDLE" };
   await executeWalletTransaction(
     async () => contract.getFunction("deposit")({
       value: BigInt(requiredAmount),
     }),
-    input.reconcile,
+    async () => {
+      const fundedState = await readFundingState(contract);
+      if (
+        fundedState.state !== 1 ||
+        fundedState.depositedAmount !== requiredAmount
+      ) {
+        return pendingReconciliation();
+      }
+
+      let reconciled: AgreementDetails | void;
+      try {
+        reconciled = await input.reconcile();
+      } catch {
+        return pendingReconciliation();
+      }
+      if (
+        !reconciled?.chain ||
+        reconciled.chain.state !== "AwaitingDelivery" ||
+        reconciled.chain.depositedAmount !== input.details.chain!.requiredAmount
+      ) {
+        return pendingReconciliation();
+      }
+      return { status: "CONFIRMED" };
+    },
     (receipt) => {
       latestReceipt = receipt;
       input.onTransaction?.(receipt);
@@ -101,4 +139,24 @@ export async function fundEscrow(input: {
     (hash) => explorerTransactionUrl(network.chainId, hash),
   );
   return latestReceipt;
+}
+
+async function readFundingState(contract: Contract) {
+  const [state, depositedAmount, requiredAmount] = await Promise.all([
+    contract.getFunction("state")(),
+    contract.getFunction("depositedAmount")(),
+    contract.getFunction("requiredAmount")(),
+  ]);
+  return {
+    state: Number(state),
+    depositedAmount: BigInt(depositedAmount),
+    requiredAmount: BigInt(requiredAmount),
+  };
+}
+
+function pendingReconciliation() {
+  return {
+    status: "PENDING" as const,
+    message: "Funding submitted, waiting for chain reconciliation.",
+  };
 }

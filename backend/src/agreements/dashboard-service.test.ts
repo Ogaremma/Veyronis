@@ -86,6 +86,17 @@ describe("participant-specific agreement actions", () => {
     expect(actionsFor("seller", "Complete", 10n)).toEqual(["withdraw"]);
   });
 
+  it("does not expose seller withdrawal before terminal settlement", () => {
+    for (const state of ["AwaitingPayment", "AwaitingDelivery", "Disputed"] as const) {
+      expect(actionsFor("seller", state, 10n)).not.toContain("withdraw");
+    }
+    expect(actionsFor("seller", "Complete", 10n)).toEqual(["withdraw"]);
+    expect(actionsFor("seller", "Complete", 0n)).toEqual([]);
+    expect(actionsFor("buyer", "Refunded", 10n)).toEqual(["withdraw"]);
+    expect(actionsFor("buyer", "Complete", 10n)).toEqual([]);
+    expect(actionsFor("arbitrator", "Complete", 10n)).toEqual([]);
+  });
+
   it("shows each authenticated participant their role and authoritative state", async () => {
     const repository = new InMemoryAgreementRepository();
     await repository.createAgreement(metadata);
