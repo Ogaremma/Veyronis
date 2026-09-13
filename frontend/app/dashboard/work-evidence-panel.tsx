@@ -10,9 +10,11 @@ import { HttpAgreementCreationClient } from "../agreement-client";
 export function WorkEvidencePanel({
   detail,
   baseUrl,
+  onSubmissionsChange,
 }: {
   detail: AgreementDetails;
   baseUrl: string;
+  onSubmissionsChange?: (submissions: WorkEvidenceSubmission[]) => void;
 }) {
   const client = useMemo(() => new HttpAgreementCreationClient(baseUrl), [baseUrl]);
   const [submissions, setSubmissions] = useState<WorkEvidenceSubmission[]>([]);
@@ -20,9 +22,6 @@ export function WorkEvidencePanel({
   const [error, setError] = useState("");
   const [requirementId, setRequirementId] = useState("");
   const [value, setValue] = useState("");
-  const [contentHash, setContentHash] = useState("");
-  const [mimeType, setMimeType] = useState("");
-  const [byteSize, setByteSize] = useState("");
   const [reviewNote, setReviewNote] = useState("");
 
   const requirements = useMemo(
@@ -39,16 +38,24 @@ export function WorkEvidencePanel({
   );
 
   const load = useCallback(async () => {
+    if (!hasWorkEvidenceRequirements(detail)) {
+      setSubmissions([]);
+      setLoading(false);
+      onSubmissionsChange?.([]);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
-      setSubmissions(await client.listWorkEvidence(detail.metadata.id));
+      const nextSubmissions = await client.listWorkEvidence(detail.metadata.id);
+      setSubmissions(nextSubmissions);
+      onSubmissionsChange?.(nextSubmissions);
     } catch {
       setError("Unable to load work evidence. Try again shortly.");
     } finally {
       setLoading(false);
     }
-  }, [client, detail.metadata.id]);
+  }, [client, detail]);
 
   useEffect(() => {
     void load();
@@ -65,14 +72,8 @@ export function WorkEvidencePanel({
       await client.submitWorkEvidence(detail.metadata.id, {
         requirementId,
         value,
-        ...(contentHash ? { contentHash } : {}),
-        ...(mimeType ? { mimeType } : {}),
-        ...(byteSize ? { byteSize } : {}),
       });
       setValue("");
-      setContentHash("");
-      setMimeType("");
-      setByteSize("");
       await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to submit work evidence.");
@@ -98,6 +99,10 @@ export function WorkEvidencePanel({
       setError(reason instanceof Error ? reason.message : "Unable to review work evidence.");
     }
   }
+
+  if (!hasWorkEvidenceRequirements(detail)) return null;
+
+  const selectedRequirement = requirements.find(requirement => requirement.id === requirementId);
 
   return (
     <section className="dash-panel work-evidence-panel">
@@ -176,38 +181,11 @@ export function WorkEvidencePanel({
             </select>
           </label>
           <label>
-            Hosted URI or value
+            {evidenceValueLabel(selectedRequirement?.kind)}
             <input
               value={value}
-              placeholder="https://example.com or hosted file URL"
+              placeholder={evidenceValuePlaceholder(selectedRequirement?.kind)}
               onChange={(event) => setValue(event.currentTarget.value)}
-            />
-          </label>
-          <div className="form-two">
-            <label>
-              Content hash (optional)
-              <input
-                value={contentHash}
-                placeholder="sha256:..."
-                onChange={(event) => setContentHash(event.currentTarget.value)}
-              />
-            </label>
-            <label>
-              MIME type (optional)
-              <input
-                value={mimeType}
-                placeholder="image/png"
-                onChange={(event) => setMimeType(event.currentTarget.value)}
-              />
-            </label>
-          </div>
-          <label>
-            Byte size (optional)
-            <input
-              value={byteSize}
-              inputMode="numeric"
-              placeholder="1024"
-              onChange={(event) => setByteSize(event.currentTarget.value)}
             />
           </label>
           <button
@@ -234,4 +212,26 @@ export function WorkEvidencePanel({
       )}
     </section>
   );
+}
+
+export function hasWorkEvidenceRequirements(detail: AgreementDetails) {
+  return (detail.metadata.deliverables ?? []).some(
+    deliverable => deliverable.active && deliverable.evidenceRequirements.length > 0,
+  );
+}
+
+function evidenceValueLabel(kind: string | undefined) {
+  if (kind === "TEXT") return "Evidence text";
+  if (kind === "TRANSACTION_HASH") return "Transaction hash";
+  if (kind === "GITHUB_COMMIT") return "Commit URL";
+  if (kind === "GITHUB_REPOSITORY") return "Repository URL";
+  return "Evidence URL";
+}
+
+function evidenceValuePlaceholder(kind: string | undefined) {
+  if (kind === "TEXT") return "Describe or paste the requested evidence";
+  if (kind === "TRANSACTION_HASH") return "0x...";
+  if (kind === "GITHUB_COMMIT") return "https://github.com/...";
+  if (kind === "GITHUB_REPOSITORY") return "https://github.com/organization/repository";
+  return "https://example.com/evidence";
 }

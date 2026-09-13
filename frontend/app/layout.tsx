@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { Metadata } from "next";
 import "./globals.css";
 import "./connect-wallet.css";
 import "./escrow/work-evidence.css";
@@ -13,3 +14,9 @@ export default function RootLayout({
     </html>
   );
 }
+
+export const metadata: Metadata = {
+  title: "Veyronis",
+  description: "Verifiable escrow agreements with authoritative on-chain settlement.",
+  icons: { icon: "/icon.svg" },
+};

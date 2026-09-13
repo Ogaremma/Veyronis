@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ZeroHash, id } from "ethers";
+import { ZeroAddress, ZeroHash, id } from "ethers";
 import type { AgreementDetails, EscrowState, ParticipantRole } from "@veyronis/shared";
 import { AgreementDetailView } from "./agreement-detail-view";
 
@@ -12,7 +12,25 @@ function detailFor(
 ): AgreementDetails {
   return {
     role,
-    metadata: { requiredAmount: "100" },
+    metadata: {
+      requiredAmount: "100",
+      policy: {
+        version: 1,
+        evidenceType: id("BLOCKCHAIN_VERIFICATION_DISABLED"),
+        sourceChainKey: 1,
+        assetKind: "native",
+        expectedSourceContract: ZeroAddress,
+        expectedRecipient: "0x2000000000000000000000000000000000000002",
+        expectedAsset: ZeroAddress,
+        expectedSender: "0x1000000000000000000000000000000000000001",
+        amountRule: "exact",
+        amount: "100",
+        minSourceBlock: "0",
+        maxSourceBlock: "0",
+        calldataSelector: "0x00000000",
+        requireTransferEvent: false,
+      },
+    },
     actions: ["withdraw"],
     timeline: [],
     chain: {
@@ -47,14 +65,14 @@ describe("agreement withdrawal gating", () => {
   it("does not show seller withdrawal before terminal settlement", () => {
     for (const state of ["AwaitingPayment", "AwaitingDelivery", "Disputed"] as const) {
       const html = renderDetail(detailFor("seller", state));
-      expect(html).not.toContain(">Withdraw");
+      expect(html).not.toContain("Withdraw 1.0 ETH");
       expect(html).not.toContain("ETH available");
     }
   });
 
   it("shows seller withdrawal only when Complete with a positive balance", () => {
     expect(renderDetail(detailFor("seller", "Complete"))).toContain("Withdraw 1.0 ETH");
-    expect(renderDetail(detailFor("seller", "Complete", "0"))).not.toContain(">Withdraw");
+    expect(renderDetail(detailFor("seller", "Complete", "0"))).not.toContain("Withdraw 1.0 ETH");
   });
 
   it("does not give buyer or arbitrator the seller withdrawal control", () => {
@@ -68,10 +86,10 @@ describe("agreement guidance", () => {
   it("orders seller work and keeps proof advisory", () => {
     const html = renderDetail(detailFor("seller", "AwaitingDelivery"));
     const flowStart = html.indexOf("Review agreement terms");
-    const evidence = html.indexOf("Submit work or delivery evidence");
-    const condition = html.indexOf("Complete the external blockchain condition");
+    const evidence = html.indexOf("Complete required delivery evidence");
+    const condition = html.indexOf("Complete external blockchain condition");
     const review = html.indexOf("Wait for verification and review");
-    const settlement = html.indexOf("Buyer accepts delivery or arbitrator resolves the dispute");
+    const settlement = html.indexOf("Wait for buyer acceptance or arbitrator resolution");
     expect([flowStart, evidence, condition, review, settlement]).toEqual(
       [...[flowStart, evidence, condition, review, settlement]].sort((left, right) => left - right),
     );

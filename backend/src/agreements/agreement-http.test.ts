@@ -207,6 +207,15 @@ describe("agreement HTTP authorization", () => {
     expect(await response.json()).toEqual({ ok: true, service: "veyronis-backend" });
   });
 
+  it("restores only a valid wallet session without requiring a new signature", async () => {
+    const { auth, url } = await setup();
+    const cookie = await sessionCookie(auth, buyer);
+    expect((await fetch(`${url}/auth/session`)).status).toBe(401);
+    const response = await fetch(`${url}/auth/session`, { headers: { cookie } });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ address: buyer.address });
+  });
+
   it("returns 401 for both mutating routes without a session", async () => {
     const { url } = await setup();
     expect((await fetch(`${url}/agreements`, { method: "POST", body: JSON.stringify(draft) })).status).toBe(401);

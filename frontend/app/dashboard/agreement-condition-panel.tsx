@@ -5,14 +5,18 @@ import type {
   AgreementConditionDetails,
   AgreementDetails,
 } from "@veyronis/shared";
+import { externalBlockchainConditionFromPolicy } from "@veyronis/shared";
+import { formatEther } from "ethers";
 import { HttpAgreementCreationClient } from "../agreement-client";
 
 export function AgreementConditionPanel({
   detail,
   baseUrl,
+  onVerificationChange,
 }: {
   detail: AgreementDetails;
   baseUrl: string;
+  onVerificationChange?: (verification: AgreementConditionDetails["verification"]) => void;
 }) {
   const client = useMemo(() => new HttpAgreementCreationClient(baseUrl), [baseUrl]);
   const [condition, setCondition] = useState<AgreementConditionDetails>();
@@ -21,12 +25,18 @@ export function AgreementConditionPanel({
   const [available, setAvailable] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState("");
+  const configured = useMemo(
+    () => externalBlockchainConditionFromPolicy(detail.metadata.policy) !== undefined,
+    [detail.metadata.policy],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      setCondition(await client.getAgreementCondition(detail.metadata.id));
+      const nextCondition = await client.getAgreementCondition(detail.metadata.id);
+      setCondition(nextCondition);
+      onVerificationChange?.(nextCondition.verification);
       setAvailable(true);
     } catch (error) {
       setAvailable(false);
@@ -40,8 +50,14 @@ export function AgreementConditionPanel({
   }, [client, detail.metadata.id]);
 
   useEffect(() => {
+    if (!configured) {
+      setAvailable(false);
+      setLoading(false);
+      onVerificationChange?.(undefined);
+      return;
+    }
     void load();
-  }, [load]);
+  }, [configured, load]);
 
   async function verify() {
     setError("");
@@ -60,6 +76,8 @@ export function AgreementConditionPanel({
       setVerifying(false);
     }
   }
+
+  if (!configured) return null;
 
   if (!available) {
     return error ? (
@@ -94,7 +112,7 @@ export function AgreementConditionPanel({
             </div>
             <div>
               <dt>Source blockchain</dt>
-              <dd>Chain {condition.condition.sourceChainKey}</dd>
+              <dd>{sourceChainLabel(condition.condition.sourceChainKey)}</dd>
             </div>
             <div>
               <dt>Sender</dt>
@@ -107,14 +125,12 @@ export function AgreementConditionPanel({
             <div>
               <dt>Asset</dt>
               <dd className="dash-mono">
-                {condition.condition.assetType === "erc20"
-                  ? condition.condition.tokenContract
-                  : "Native asset"}
+                {assetLabel(condition.condition)}
               </dd>
             </div>
             <div>
-              <dt>Amount (base units)</dt>
-              <dd>{condition.condition.amount} ({condition.condition.amountRule})</dd>
+              <dt>Required amount</dt>
+              <dd>{conditionAmountLabel(condition.condition)} ({amountRuleLabel(condition.condition.amountRule)})</dd>
             </div>
             {verification?.transactionHash && (
               <div>
@@ -135,6 +151,15 @@ export function AgreementConditionPanel({
               </div>
             )}
           </dl>
+          <details className="technical-details">
+            <summary>Technical details</summary>
+            <dl>
+              <div><dt>Source chain key</dt><dd>{condition.condition.sourceChainKey}</dd></div>
+              <div><dt>EVM chain ID</dt><dd>11155111</dd></div>
+              <div><dt>Raw amount</dt><dd className="dash-mono">{condition.condition.amount} base units</dd></div>
+              {condition.condition.tokenContract && <div><dt>Token contract</dt><dd className="dash-mono">{condition.condition.tokenContract}</dd></div>}
+            </dl>
+          </details>
           {verification?.status === "verified" && (
             <ul className="condition-checks">
               <li>✓ Transaction included</li>
@@ -183,6 +208,35 @@ export function conditionTitle(details: AgreementConditionDetails) {
     ? "token transfer"
     : "native transfer";
   return `External blockchain action: ${asset}`;
+}
+
+export function hasExternalBlockchainCondition(detail: AgreementDetails) {
+  return externalBlockchainConditionFromPolicy(detail.metadata.policy) !== undefined;
+}
+
+function sourceChainLabel(sourceChainKey: number) {
+  return sourceChainKey === 1
+    ? "Sepolia (key 1 · chain ID 11155111)"
+    : `Chain key ${sourceChainKey}`;
+}
+
+function assetLabel(condition: AgreementConditionDetails["condition"]) {
+  return condition.assetType === "erc20"
+    ? condition.tokenContract ?? "ERC-20 token"
+    : "Native ETH on Sepolia";
+}
+
+function conditionAmountLabel(condition: AgreementConditionDetails["condition"]) {
+  if (condition.assetType !== "native") return `${condition.amount} token units`;
+  try {
+    return `${formatEther(condition.amount)} ETH`;
+  } catch {
+    return `${condition.amount} base units`;
+  }
+}
+
+function amountRuleLabel(rule: AgreementConditionDetails["condition"]["amountRule"]) {
+  return rule === "exact" ? "exact" : "minimum";
 }
 
 export function conditionStatusLabel(

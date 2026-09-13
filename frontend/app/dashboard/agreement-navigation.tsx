@@ -19,10 +19,27 @@ export function AgreementNavigation({
   );
 }
 
-export function navigateAgreementBack(router: { back: () => void }) {
-  router.back();
+interface AgreementRouter {
+  back: () => void;
+  push: (path: string) => void;
 }
 
-export function navigateAgreementHome(router: { push: (path: "/") => void }) {
+export function navigateAgreementBack(
+  router: AgreementRouter,
+  historyState: unknown = typeof window === "undefined"
+    ? undefined
+    : window.history.state,
+) {
+  if (hasPreviousInternalRoute(historyState)) router.back();
+  else router.push("/");
+}
+
+export function navigateAgreementHome(router: AgreementRouter) {
   router.push("/");
+}
+
+export function hasPreviousInternalRoute(historyState: unknown) {
+  if (typeof historyState !== "object" || historyState === null) return false;
+  const index = (historyState as { idx?: unknown }).idx;
+  return typeof index === "number" && index > 0;
 }

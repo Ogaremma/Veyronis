@@ -10,6 +10,7 @@ import { EscrowModule } from "./escrow/escrow-module";
 import { PlaceholderModule } from "./ui/placeholder-module";
 import { getNetworkLabel, getNetworkName } from "./network-label";
 import { walletConnectConfigured } from "./web3-config";
+import { restoreWalletSession } from "./wallet/session-restoration";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL as string;
 
@@ -26,6 +27,7 @@ export default function Home() {
   const [sendOpen, setSendOpen] = useState(false);
   const [busyConnector, setBusyConnector] = useState("");
   const [connectionError, setConnectionError] = useState("");
+  const [sessionChecked, setSessionChecked] = useState(false);
   const networkLabel = getNetworkLabel(chainId);
   const networkName = getNetworkName(chainId);
 
@@ -40,12 +42,24 @@ export default function Home() {
 
   useEffect(() => {
     if (!isConnected || !address || !connector || authenticatedAddress !== address) return;
+    if (section !== "wallet") return;
     let active = true;
     const load = async () => { const provider = await browserProvider(connector); const value = await provider.getBalance(address); if (active) setBalance(formatEther(value)); };
     void load().catch(() => active && setBalance("0"));
-    const timer = window.setInterval(() => void load(), 8000);
+    const timer = window.setInterval(() => void load(), 30000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [address, authenticatedAddress, connector, isConnected]);
+  }, [address, authenticatedAddress, connector, isConnected, section]);
+
+  useEffect(() => {
+    if (!isConnected || !address || authenticatedAddress) return;
+    let active = true;
+    void restoreWalletSession({ address, baseUrl: API })
+      .then(restoredAddress => {
+        if (active && restoredAddress) setAuthenticatedAddress(restoredAddress);
+      })
+      .finally(() => active && setSessionChecked(true));
+    return () => { active = false; };
+  }, [address, authenticatedAddress, isConnected]);
 
   async function connectWallet(connectorId: string) {
     const nextConnector = connectors.find((candidate) => candidate.id === connectorId);
@@ -91,11 +105,12 @@ export default function Home() {
     return transaction.hash;
   }
 
+  if (isConnected && address && !sessionChecked) return <main className="module-page session-restoring"><span className="eyebrow">VEYRONIS</span><h1>Restoring wallet session</h1><p className="dash-muted">Checking your existing authenticated session...</p></main>;
   if (!isConnected || !address || authenticatedAddress.toLowerCase() !== address.toLowerCase()) return <WalletOnboarding connectors={walletConnectorOptions} connect={connectWallet} walletConnectConfigured={walletConnectConfigured} busyConnector={busyConnector} error={connectionError} />;
   return <AppShell address={address} networkLabel={networkLabel} section={section} setSection={setSection} lock={lock}>
     {section === "wallet" && <DashboardHome address={address} balance={balance} networkName={networkName} sendOpen={sendOpen} setSendOpen={setSendOpen} sendEth={sendEth} />}
     {section === "escrow" && <EscrowModule walletAddress={address} networkName={networkName} />}
-    {section === "marketplace" && <PlaceholderModule kind="marketplace" />}{section === "proofs" && <PlaceholderModule kind="proofs" />}{section === "reputation" && <PlaceholderModule kind="reputation" />}{section === "activity" && <PlaceholderModule kind="activity" />}
+    {section === "marketplace" && <PlaceholderModule kind="marketplace" onHome={() => setSection("wallet")} />}{section === "proofs" && <PlaceholderModule kind="proofs" onHome={() => setSection("wallet")} />}{section === "reputation" && <PlaceholderModule kind="reputation" onHome={() => setSection("wallet")} />}{section === "activity" && <PlaceholderModule kind="activity" onHome={() => setSection("wallet")} />}
   </AppShell>;
 }
 

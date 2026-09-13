@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Veyronis">
+  <defs>
+    <linearGradient id="veyronis-blue" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3c8cff"/>
+      <stop offset="1" stop-color="#6bd7ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#04102a"/>
+  <path d="M15 13h10.5l6.5 25.5L38.5 13H49L37.5 51h-11L15 13Z" fill="url(#veyronis-blue)"/>
+  <path d="M15 13h10.5l6.5 25.5L38.5 13H49L37.5 51h-11L15 13Z" fill="none" stroke="#a9d8ff" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

@@ -17,11 +17,18 @@ describe("agreement navigation", () => {
   });
 
   it("returns to the previous page and main control room", () => {
-    const backRouter = { back: vi.fn() };
-    const homeRouter = { push: vi.fn() };
-    navigateAgreementBack(backRouter);
+    const backRouter = { back: vi.fn(), push: vi.fn() };
+    const homeRouter = { back: vi.fn(), push: vi.fn() };
+    navigateAgreementBack(backRouter, { idx: 1 });
     navigateAgreementHome(homeRouter);
     expect(backRouter.back).toHaveBeenCalledOnce();
     expect(homeRouter.push).toHaveBeenCalledWith("/");
+  });
+
+  it("falls back to the main dashboard when there is no useful history", () => {
+    const router = { back: vi.fn(), push: vi.fn() };
+    navigateAgreementBack(router, { idx: 0 });
+    expect(router.back).not.toHaveBeenCalled();
+    expect(router.push).toHaveBeenCalledWith("/");
   });
 });

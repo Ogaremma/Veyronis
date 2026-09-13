@@ -2,6 +2,29 @@
 import React, { useState } from "react";
 import { GlassButton, GlassCard, GlassInput, SectionHeader, StatusBadge } from "../ui/glass";
 
+const availableNow = [
+  "Live Contracts",
+  "Agreement creation",
+  "Escrow funding",
+  "Delivery and work evidence",
+  "External blockchain-condition verification",
+  "Dispute flow",
+  "Arbitrator resolution",
+];
+const comingNext = [
+  "Job Marketplace",
+  "Job Offers",
+  "Offers received",
+  "Offers sent",
+  "Arbitrator Services",
+  "Arbitrator registration",
+  "Arbitrator profiles",
+  "Availability and reputation",
+  "Proofs workspace",
+  "Activity history",
+  "Reputation system",
+];
+
 export function DashboardHome({ address, balance, networkName, sendOpen, setSendOpen, sendEth }: { address: string; balance: string; networkName: string; sendOpen: boolean; setSendOpen: (open: boolean) => void; sendEth: (recipient: string, amount: string) => Promise<string> }) {
   const [depositOpen, setDepositOpen] = useState(false);
   const [recipient, setRecipient] = useState(""); const [amount, setAmount] = useState("");
@@ -10,6 +33,10 @@ export function DashboardHome({ address, balance, networkName, sendOpen, setSend
   async function send() { setBusy(true); setStatus(""); try { const hash = await sendEth(recipient, amount); setStatus(`Confirmed · ${hash.slice(0, 10)}...${hash.slice(-6)}`); setReview(false); } catch (reason) { setStatus(reason instanceof Error ? reason.message : "Transaction failed"); } finally { setBusy(false); } }
   return <div className="module-page wallet-page"><SectionHeader eyebrow="GOOD TO SEE YOU" title="Your wallet" action={<div className="header-wallet"><StatusBadge tone="green">Connected</StatusBadge><button onClick={() => navigator.clipboard.writeText(address)}>{address.slice(0, 8)}...{address.slice(-6)} · Copy</button></div>} />
     <GlassCard className="balance-card"><div><span>Total Balance</span><h2>{Number(balance).toFixed(4)} <small>ETH</small></h2><p>Native asset on {networkName}</p></div><div className="balance-actions"><GlassButton className="primary-button" onClick={() => setDepositOpen(true)}>↓ <span>Deposit</span></GlassButton><GlassButton onClick={() => setSendOpen(true)}>↑ <span>Send</span></GlassButton></div></GlassCard>
+    <section className="roadmap-section">
+      <div className="roadmap-column"><div className="subhead"><h2>Available now</h2><StatusBadge tone="green">Live</StatusBadge></div><div className="preview-card-grid">{availableNow.map(item => <GlassCard key={item} className="preview-card available"><strong>{item}</strong><span>Ready in this demo</span></GlassCard>)}</div></div>
+      <div className="roadmap-column"><div className="subhead"><h2>Coming next</h2><StatusBadge tone="amber">Preview</StatusBadge></div><div className="preview-card-grid">{comingNext.map(item => <GlassCard key={item} className="preview-card"><strong>{item}</strong><span>In development</span></GlassCard>)}</div></div>
+    </section>
     <div className="dashboard-grid"><section><div className="subhead"><h2>Assets</h2><button>Manage assets</button></div><GlassCard className="asset-list"><Asset symbol="Ξ" name="Ethereum" detail="Native network asset" amount={`${Number(balance).toFixed(4)} ETH`} /><Asset symbol="$" name="USD Coin" detail="ERC-20 stablecoin" amount="0.00 USDC" /></GlassCard></section><section><div className="subhead"><h2>Recent activity</h2><button>View all</button></div><GlassCard className="recent-empty"><span>↗</span><h3>No wallet activity yet</h3><p>Your local transfers and escrow actions will appear here.</p></GlassCard></section></div>
     {depositOpen && <Modal title="Receive assets" close={() => setDepositOpen(false)}><div className="receive-symbol">V</div><p className="modal-copy">Send ETH or supported ERC-20 assets to this address.</p><div className="address-box"><code>{address}</code><button onClick={() => navigator.clipboard.writeText(address)}>Copy</button></div><div className="receive-assets"><StatusBadge>ETH · Native</StatusBadge><StatusBadge>USDC · ERC-20</StatusBadge></div><p className="modal-note">Only send assets available on {networkName}.</p></Modal>}
     {sendOpen && <Modal title={review ? "Review transaction" : "Send assets"} close={() => { setSendOpen(false); setReview(false); setStatus(""); }}><div className="segmented"><button className={asset === "ETH" ? "selected" : ""} onClick={() => { setAsset("ETH"); setReview(false); }}>ETH</button><button className={asset === "USDC" ? "selected" : ""} onClick={() => { setAsset("USDC"); setReview(false); }}>USDC</button></div>{asset === "USDC" ? <div className="coming-soon"><StatusBadge>Coming soon</StatusBadge><h3>USDC transfers are not configured locally</h3><p>A deployed token address is required before real ERC-20 transfers can be signed.</p></div> : review ? <div className="review-transaction"><span>Sending</span><strong>{amount} ETH</strong><span>To</span><code>{recipient}</code><GlassButton className="primary-button" disabled={busy} onClick={() => void send()}>{busy ? "Broadcasting..." : "Confirm transaction"}</GlassButton></div> : <div className="send-form"><label>Recipient<GlassInput placeholder="0x..." value={recipient} onChange={event => setRecipient(event.currentTarget.value)} /></label><label>Amount<GlassInput type="number" min="0" step="0.001" placeholder="0.00" value={amount} onChange={event => setAmount(event.currentTarget.value)} /></label><GlassButton className="primary-button" disabled={!recipient || !amount} onClick={() => setReview(true)}>Review transaction</GlassButton></div>}{status && <p className="transaction-status">{status}</p>}</Modal>}

@@ -27,4 +27,10 @@ describe("agreement wizard flow", () => {
     expect(previousWizardStep(1)).toBe(1);
     expect(wizardBackLabel(3, true)).toBeUndefined();
   });
+
+  it("moves backward without resetting the wizard step index", () => {
+    expect(previousWizardStep(7)).toBe(6);
+    expect(previousWizardStep(2)).toBe(1);
+    expect(previousWizardStep(1)).toBe(1);
+  });
 });

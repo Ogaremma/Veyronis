@@ -2,6 +2,10 @@ import React from "react";
 import { canWithdrawEscrowFunds, type AgreementAction, type AgreementDetails, type TransactionReceiptInfo } from "@veyronis/shared";
 import { formatEther, ZeroHash } from "ethers";
 import { AgreementLifecycle } from "./agreement-lifecycle";
+import { sellerProgressSteps } from "./seller-progress";
+import type { AgreementConditionVerification, WorkEvidenceSubmission } from "@veyronis/shared";
+import { getNetworkName } from "../network-label";
+import { requiredTransactionChainId } from "../transaction-network-guard";
 
 const labels: Record<AgreementAction, string> = {
   deposit: "Fund Contract", cancel: "Cancel before payment", confirmDelivery: "Confirm delivery",
@@ -9,10 +13,12 @@ const labels: Record<AgreementAction, string> = {
   resolveRelease: "Resolve for seller", resolveRefund: "Resolve for buyer", withdraw: "Withdraw",
 };
 
-export function AgreementDetailView({ detail, transaction, execute }: {
+export function AgreementDetailView({ detail, transaction, execute, workEvidenceSubmissions, conditionVerification }: {
   detail: AgreementDetails;
   transaction: TransactionReceiptInfo;
   execute: (action: AgreementAction) => void;
+  workEvidenceSubmissions?: readonly WorkEvidenceSubmission[] | undefined;
+  conditionVerification?: AgreementConditionVerification | undefined;
 }) {
   const chain = detail.chain;
   if (!chain) return <p className="dash-muted">This agreement has not been deployed.</p>;
@@ -20,6 +26,9 @@ export function AgreementDetailView({ detail, transaction, execute }: {
   const withdrawable = canWithdrawEscrowFunds(detail.role, chain.state, chain.withdrawalAmount);
   const visibleActions = detail.actions.filter(action => action !== "withdraw" || withdrawable);
   const primary = visibleActions[0];
+  const progressSteps = detail.role === "seller"
+    ? sellerProgressSteps(detail, workEvidenceSubmissions, conditionVerification)
+    : undefined;
   return <>
     {detail.reconciliation?.status === "METADATA_STALE" && <aside className="reconciliation-note">
       Blockchain state is authoritative. Metadata is being synchronized.
@@ -33,21 +42,17 @@ export function AgreementDetailView({ detail, transaction, execute }: {
         <dt>Arbitrator</dt><dd className="dash-mono">{chain.arbitrator}</dd>
         <dt>Required amount</dt><dd>{formatEther(chain.requiredAmount)} ETH</dd>
         <dt>Current status</dt><dd><span className="dash-status">{chain.state}</span></dd>
+        <dt>Network</dt><dd>{getNetworkName(requiredTransactionChainId())}</dd>
         <dt>Agreement commitment</dt><dd className="dash-mono">{chain.agreementCommitment}</dd>
         <dt>Evidence policy commitment</dt><dd className="dash-mono">{chain.evidencePolicyCommitment}</dd>
       </dl>
     </section>
     {detail.role === "seller" && <section className="detail-section">
-      <div className="section-heading"><span className="dash-eyebrow">SELLER FLOW</span><h2>Required order of operations</h2></div>
+      <div className="section-heading"><span className="dash-eyebrow">SELLER PROGRESS</span><h2>Required order of operations</h2></div>
       <ol className="seller-flow">
-        <li>Review agreement terms</li>
-        <li>Submit work or delivery evidence</li>
-        <li>Complete the external blockchain condition, if configured</li>
-        <li>Wait for verification and review</li>
-        <li>Buyer accepts delivery or arbitrator resolves the dispute</li>
-        <li>Settlement balance becomes available after the contract credits it</li>
+        {progressSteps?.map(step => <li key={step.label} className={step.tone}><strong>{step.label}</strong><span>{step.status}</span></li>)}
       </ol>
-      <p className="dash-muted">Proof verification is advisory input. It does not automatically release funds.</p>
+      <p className="dash-muted">Progress reflects agreement requirements, verification status, and authoritative contract state. Proof verification is advisory input and does not automatically release funds.</p>
     </section>}
     <section className="detail-section"><div className="section-heading"><span className="dash-eyebrow">LIFECYCLE</span><h2>Authoritative escrow state</h2></div><AgreementLifecycle state={chain.state} refundRequested={detail.timeline.some(event => event.name === "RefundRequested")} disputed={detail.timeline.some(event => event.name === "DisputeOpened")} /></section>
     <section className="detail-grid">

@@ -70,6 +70,17 @@ export function createAgreementHttpHandler(
         );
         return;
       }
+      if (request.method === "GET" && request.url === "/auth/session") {
+        const session = options?.auth?.readSession(
+          readCookie(request.headers.cookie, "veyronis_session"),
+        );
+        if (!session) {
+          sendJson(response, 401, { error: "Wallet authentication required" });
+          return;
+        }
+        sendJson(response, 200, { address: session.address });
+        return;
+      }
       if (request.method === "POST" && request.url === "/auth/logout") {
         sendJson(
           response,

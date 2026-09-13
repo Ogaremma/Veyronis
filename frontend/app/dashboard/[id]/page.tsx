@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { BrowserProvider, Contract, ZeroHash, getAddress } from "ethers";
 import { useAccount } from "wagmi";
 import type { AgreementAction, AgreementDetails, TransactionReceiptInfo } from "@veyronis/shared";
+import type { AgreementConditionVerification, WorkEvidenceSubmission } from "@veyronis/shared";
 import { AgreementDetailView } from "../agreement-detail-view";
 import { WorkEvidencePanel } from "../work-evidence-panel";
 import { AgreementConditionPanel } from "../agreement-condition-panel";
@@ -31,6 +32,8 @@ export default function AgreementDetailsPage() {
   const router = useRouter();
   const { address, chainId } = useAccount();
   const [detail, setDetail] = useState<AgreementDetails>();
+  const [workEvidenceSubmissions, setWorkEvidenceSubmissions] = useState<WorkEvidenceSubmission[]>([]);
+  const [conditionVerification, setConditionVerification] = useState<AgreementConditionVerification>();
   const [error, setError] = useState("");
   const [transaction, setTransaction] = useState<TransactionReceiptInfo>({ status: "IDLE" });
   const load = useCallback(async () => {
@@ -48,6 +51,11 @@ export default function AgreementDetailsPage() {
     return nextDetail;
   }, [id]);
   useEffect(() => { void load().catch((reason) => setError(reason.message)); }, [load]);
+
+  useEffect(() => {
+    setWorkEvidenceSubmissions([]);
+    setConditionVerification(undefined);
+  }, [id]);
 
   async function execute(action: AgreementAction) {
     setError("");
@@ -107,8 +115,8 @@ export default function AgreementDetailsPage() {
     <AgreementNavigation onBack={() => navigateAgreementBack(router)} onHome={() => navigateAgreementHome(router)} />
     <header className="detail-header"><div><span className="dash-eyebrow">AGREEMENT DETAIL / {detail.role.toUpperCase()}</span><h1>{detail.chain?.state ?? "Not deployed"}</h1><p className="dash-mono">{detail.chain?.escrowAddress ?? "No escrow address"}</p></div><div className="dash-status">Block {detail.chain?.blockNumber ?? "-"}</div></header>
     {error && <p className="dash-error">{error}</p>}
-    <AgreementDetailView detail={detail} transaction={transaction} execute={(action) => void execute(action)} />
-    <AgreementConditionPanel detail={detail} baseUrl={API} />
-    {detail.chain && <WorkEvidencePanel detail={detail} baseUrl={API} />}
+    <AgreementDetailView detail={detail} transaction={transaction} execute={(action) => void execute(action)} workEvidenceSubmissions={workEvidenceSubmissions} conditionVerification={conditionVerification} />
+    <AgreementConditionPanel detail={detail} baseUrl={API} onVerificationChange={setConditionVerification} />
+    {detail.chain && <WorkEvidencePanel detail={detail} baseUrl={API} onSubmissionsChange={setWorkEvidenceSubmissions} />}
   </main>;
 }
