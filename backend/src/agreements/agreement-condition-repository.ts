@@ -4,6 +4,8 @@ import type {
 } from "@veyronis/shared";
 import type { ParameterizedQueryExecutor } from "./agreement-repository.js";
 
+const STALE_VERIFICATION_TIMEOUT_MS = 5 * 60 * 1000;
+
 export interface AgreementConditionVerificationRecord extends Omit<
   AgreementConditionVerification,
   | "verifiedClaimId"
@@ -63,7 +65,8 @@ export class InMemoryAgreementConditionVerificationRepository implements Agreeme
     if (existing) {
       if (
         existing.status === "verified" ||
-        existing.status === "verification_in_progress"
+        (existing.status === "verification_in_progress" &&
+          !isStaleVerification(existing.updatedAt, verification.updatedAt))
       ) {
         return { verification: structuredClone(existing), claimed: false };
       }
@@ -176,8 +179,13 @@ export class SqlAgreementConditionVerificationRepository implements AgreementCon
          failure_message=NULL,
          verified_at=NULL,
          updated_at=EXCLUDED.updated_at
-       WHERE agreement_condition_verifications.status IN ('pending', 'verification_failed')
-       RETURNING *`,
+        WHERE agreement_condition_verifications.status IN ('pending', 'verification_failed')
+          OR (
+            agreement_condition_verifications.status = 'verification_in_progress'
+            AND agreement_condition_verifications.updated_at
+              < EXCLUDED.updated_at - INTERVAL '5 minutes'
+          )
+        RETURNING *`,
       [
         verification.id,
         verification.agreementId,
@@ -295,4 +303,14 @@ function mapVerificationRow(
       : {}),
     updatedAt: new Date(String(row.updated_at)).toISOString(),
   };
+}
+
+function isStaleVerification(updatedAt: string, attemptedAt: string): boolean {
+  const updated = Date.parse(updatedAt);
+  const attempted = Date.parse(attemptedAt);
+  return (
+    Number.isFinite(updated) &&
+    Number.isFinite(attempted) &&
+    attempted - updated >= STALE_VERIFICATION_TIMEOUT_MS
+  );
 }

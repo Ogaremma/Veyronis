@@ -10,6 +10,7 @@ import {
   conditionStatusLabel,
   failureLabel,
   isVerifiedOnChain,
+  isRetryableVerificationFailure,
   verificationProviderLabel,
 } from "./agreement-condition-panel";
 
@@ -47,6 +48,12 @@ describe("agreement condition panel", () => {
     expect(conditionStatusLabel(verification("verification_failed"))).toBe(
       "Verification failed",
     );
+    expect(
+      conditionStatusLabel({
+        ...verification("verification_failed"),
+        failureCode: "SOURCE_BLOCK_NOT_ATTESTED",
+      }),
+    ).toBe("Waiting for Creditcoin attestation");
   });
 
   it("lets only the seller submit until the condition is verified", () => {
@@ -61,6 +68,21 @@ describe("agreement condition panel", () => {
 
   it("maps technical failures to safe user-facing messages", () => {
     expect(failureLabel("PROOF_UNAVAILABLE")).toContain("Wait for attestation");
+    expect(failureLabel("SOURCE_BLOCK_NOT_ATTESTED")).toContain(
+      "not attested on Creditcoin",
+    );
+    expect(failureLabel("PROOF_BUILDER_UNAVAILABLE")).toContain(
+      "Proof Builder service is not ready",
+    );
+    expect(failureLabel("PROOF_NOT_FOUND")).toContain(
+      "has no proof for this transaction",
+    );
+    expect(failureLabel("AUTHORIZED_CLAIM_FAILED")).toContain(
+      "authorized EvidenceClaimRegistry submission",
+    );
+    expect(failureLabel("ESCROW_SETTLEMENT_FAILED")).toContain(
+      "did not confirm the required settlement state",
+    );
     expect(failureLabel("SUBJECT_MISMATCH")).toContain("sender");
     expect(failureLabel("WRONG_RECIPIENT")).toContain("recipient");
     expect(failureLabel("WRONG_ASSET")).toContain("token");
@@ -118,6 +140,18 @@ describe("agreement condition panel", () => {
         failureCode: "PROOF_UNAVAILABLE",
       }).label,
     ).toBe("Locked — proof unavailable");
+    expect(
+      externalPaymentStatus(detail, {
+        ...verification("verification_failed"),
+        failureCode: "SOURCE_BLOCK_NOT_ATTESTED",
+      }).label,
+    ).toBe("Locked — waiting for Creditcoin attestation");
+    expect(
+      externalPaymentStatus(detail, {
+        ...verification("verification_failed"),
+        failureCode: "PROOF_BUILDER_UNAVAILABLE",
+      }).label,
+    ).toBe("Locked — Proof Builder unavailable");
     expect(conditionSummarySteps(detail, undefined)[3]).toMatchObject({
       label: "Payment unlocked",
       status: "Pending",
@@ -185,6 +219,46 @@ describe("agreement condition panel", () => {
       "Payment unlocked",
       "Seller withdrawal available",
     ]);
+  });
+
+  it("keeps attestation waits non-failing in the progression", () => {
+    const detail = blockchainOnlyDetail(
+      "AwaitingDelivery",
+      "0x" + "0".repeat(64),
+      "0",
+    );
+    const stages = conditionSummarySteps(detail, {
+      ...verification("verification_failed"),
+      failureCode: "SOURCE_BLOCK_NOT_ATTESTED",
+    });
+
+    expect(stages[1]).toMatchObject({
+      label: "Proof requested",
+      status: "Waiting",
+      tone: "pending",
+    });
+    expect(stages[2]).toMatchObject({
+      label: "Verified on-chain",
+      status: "Waiting",
+      tone: "pending",
+    });
+  });
+
+  it("keeps every temporary provider failure retryable", () => {
+    for (const code of [
+      "SOURCE_BLOCK_NOT_ATTESTED",
+      "PROOF_BUILDER_UNAVAILABLE",
+      "PROOF_NOT_FOUND",
+      "INVALID_PROOF",
+      "PROOF_VERIFICATION_FAILURE",
+      "CREDITCOIN_VERIFICATION_FAILED",
+      "AUTHORIZED_CLAIM_FAILED",
+      "ESCROW_SETTLEMENT_FAILED",
+      "PROVIDER_FAILURE",
+    ]) {
+      expect(isRetryableVerificationFailure(code)).toBe(true);
+    }
+    expect(isRetryableVerificationFailure("POLICY_MISMATCH")).toBe(false);
   });
 
   it("reflects only providers that actually participated", () => {

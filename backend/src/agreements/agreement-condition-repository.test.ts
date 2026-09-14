@@ -23,7 +23,9 @@ function record(id: string) {
 describe("agreement condition verification repositories", () => {
   it("reuses failed attempts and keeps verified attempts idempotent", async () => {
     const repository = new InMemoryAgreementConditionVerificationRepository();
-    const first = await repository.startVerification(record("11111111-1111-4111-8111-111111111111"));
+    const first = await repository.startVerification(
+      record("11111111-1111-4111-8111-111111111111"),
+    );
     expect(first.claimed).toBe(true);
 
     await repository.updateVerification(first.verification.id, {
@@ -32,7 +34,9 @@ describe("agreement condition verification repositories", () => {
       failureMessage: "retry later",
       updatedAt: new Date(1).toISOString(),
     });
-    const retry = await repository.startVerification(record("22222222-2222-4222-8222-222222222222"));
+    const retry = await repository.startVerification(
+      record("22222222-2222-4222-8222-222222222222"),
+    );
     expect(retry).toMatchObject({
       claimed: true,
       verification: {
@@ -47,13 +51,42 @@ describe("agreement condition verification repositories", () => {
       verifiedAt: new Date(2).toISOString(),
       updatedAt: new Date(2).toISOString(),
     });
-    const duplicate = await repository.startVerification(record("33333333-3333-4333-8333-333333333333"));
+    const duplicate = await repository.startVerification(
+      record("33333333-3333-4333-8333-333333333333"),
+    );
     expect(duplicate).toMatchObject({
       claimed: false,
       verification: {
         id: first.verification.id,
         status: "verified",
       },
+    });
+  });
+
+  it("reclaims stale in-progress work but not recent work", async () => {
+    const repository = new InMemoryAgreementConditionVerificationRepository();
+    const recent = await repository.startVerification(
+      record("11111111-1111-4111-8111-111111111111"),
+    );
+
+    const immediateRetry = await repository.startVerification(
+      record("22222222-2222-4222-8222-222222222222"),
+    );
+    expect(immediateRetry).toMatchObject({
+      claimed: false,
+      verification: { id: recent.verification.id },
+    });
+
+    const staleTime = new Date(
+      Date.parse(recent.verification.updatedAt) + 5 * 60 * 1000,
+    ).toISOString();
+    const staleRetry = await repository.startVerification({
+      ...record("33333333-3333-4333-8333-333333333333"),
+      updatedAt: staleTime,
+    });
+    expect(staleRetry).toMatchObject({
+      claimed: true,
+      verification: { id: recent.verification.id },
     });
   });
 
@@ -74,11 +107,22 @@ describe("agreement condition verification repositories", () => {
         return { rows: [row] as T[] };
       },
     };
-    const repository = new SqlAgreementConditionVerificationRepository(database);
-    const result = await repository.startVerification(record("11111111-1111-4111-8111-111111111111"));
+    const repository = new SqlAgreementConditionVerificationRepository(
+      database,
+    );
+    const result = await repository.startVerification(
+      record("11111111-1111-4111-8111-111111111111"),
+    );
     expect(result.claimed).toBe(true);
-    expect(calls[0]?.text).toContain("ON CONFLICT (agreement_id, transaction_hash)");
-    expect(calls[0]?.text).toContain("status IN ('pending', 'verification_failed')");
+    expect(calls[0]?.text).toContain(
+      "ON CONFLICT (agreement_id, transaction_hash)",
+    );
+    expect(calls[0]?.text).toContain(
+      "status IN ('pending', 'verification_failed')",
+    );
+    expect(calls[0]?.text).toContain(
+      "EXCLUDED.updated_at - INTERVAL '5 minutes'",
+    );
   });
 
   it("returns an existing SQL attempt without claiming in-progress work", async () => {
@@ -99,8 +143,12 @@ describe("agreement condition verification repositories", () => {
         return { rows: [row] as T[] };
       },
     };
-    const repository = new SqlAgreementConditionVerificationRepository(database);
-    const result = await repository.startVerification(record("22222222-2222-4222-8222-222222222222"));
+    const repository = new SqlAgreementConditionVerificationRepository(
+      database,
+    );
+    const result = await repository.startVerification(
+      record("22222222-2222-4222-8222-222222222222"),
+    );
     expect(result).toMatchObject({
       claimed: false,
       verification: { status: "verification_in_progress" },

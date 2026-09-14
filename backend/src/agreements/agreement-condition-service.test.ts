@@ -353,7 +353,7 @@ describe("agreement condition service", () => {
     const transactionHash = verifiedTransaction().sourceTransactionHash;
     const failure: AttestcoinVerificationResult = {
       ok: false,
-      code: "INVALID_PROOF",
+      code: "SOURCE_BLOCK_NOT_ATTESTED",
       message: "raw provider detail",
     };
     const { service, verifier } = await setup(verifiedTransaction(), [failure]);
@@ -362,7 +362,7 @@ describe("agreement condition service", () => {
       service.verify(agreementId, seller, transactionHash),
     ).resolves.toMatchObject({
       status: "verification_failed",
-      failureCode: "PROOF_UNAVAILABLE",
+      failureCode: "SOURCE_BLOCK_NOT_ATTESTED",
     });
     expect(verifier.requests).toHaveLength(1);
 
@@ -396,8 +396,8 @@ describe("agreement condition service", () => {
       submitter: seller,
       transactionHash: transaction.sourceTransactionHash,
       status: "verification_in_progress",
-      submittedAt: new Date(0).toISOString(),
-      updatedAt: new Date(0).toISOString(),
+      submittedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     });
     const { service, verifier } = await setup(transaction, [], verifications);
 

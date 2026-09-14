@@ -214,6 +214,17 @@ export default function AgreementDetailsPage() {
       <AgreementConditionPanel
         detail={detail}
         baseUrl={API}
+        executeAction={(action) => void execute(action)}
+        actionBusy={
+          ![
+            "IDLE",
+            "COMPLETE",
+            "USER_REJECTED",
+            "TRANSACTION_REVERTED",
+            "RPC_ERROR",
+            "RECONCILIATION_FAILED",
+          ].includes(transaction.status)
+        }
         onVerificationChange={setConditionVerification}
         onSettlementChange={async () => {
           await load();

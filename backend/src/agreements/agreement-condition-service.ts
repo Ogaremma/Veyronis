@@ -105,15 +105,7 @@ export class AgreementConditionService {
     const request = this.proofRequest(agreement, transactionHash);
     const result = await this.verifier.verifyAndSubmit(request);
     if (!result.ok) {
-      const retryable =
-        result.code === "INVALID_PROOF" || result.code === "PROVIDER_FAILURE";
-      return this.finishFailure(
-        verification,
-        retryable ? "PROOF_UNAVAILABLE" : result.code,
-        retryable
-          ? "The cross-chain proof is not available yet. Wait for attestation and try again."
-          : result.message,
-      );
+      return this.finishFailure(verification, result.code, result.message);
     }
 
     const verifiedAt = new Date().toISOString();

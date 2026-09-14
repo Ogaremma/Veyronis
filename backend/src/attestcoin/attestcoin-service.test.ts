@@ -1,6 +1,6 @@
 import { blockProver, type proofProvider } from "@gluwa/usc-sdk";
 import { AbiCoder, Transaction, Wallet, ZeroAddress, id } from "ethers";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AttestcoinProofRequest, EvidencePolicy } from "@veyronis/shared";
 import type { AppConfig } from "../config.js";
 import { AttestcoinService } from "./attestcoin-service.js";
@@ -15,6 +15,9 @@ const config: AppConfig = {
   CREDITCOIN_RPC_URL: "http://127.0.0.1:8545",
   ATTESTCOIN_PROOF_BUILDER_URL: "http://127.0.0.1:8080",
   SEPOLIA_CHAIN_KEY: 1,
+  ATTESTATION_POLL_INTERVAL_MS: 250,
+  ATTESTATION_WAIT_TIMEOUT_MS: 1_000,
+  PROOF_BUILDER_WAIT_TIMEOUT_MS: 1_000,
   VEYRONIS_EVIDENCE_REGISTRY_ADDRESS:
     "0x3000000000000000000000000000000000000003",
   VEYRONIS_VERIFIER_PRIVATE_KEY: key,
@@ -81,15 +84,31 @@ async function setup() {
     cached: false,
     generatedAt: new Date(),
   };
-  const service = new AttestcoinService(config);
+  const sourceProvider = {
+    getNetwork: async () => ({ chainId: 11155111n, name: "sepolia" }),
+    getTransaction: async () => ({ blockNumber: 50 }),
+    getTransactionReceipt: async () => ({ blockNumber: 50, status: 1 }),
+    getBlock: async () => ({ number: 50 }),
+  } as never;
+  const service = new AttestcoinService(config, sourceProvider);
   service.creditcoinProvider.getNetwork = async () =>
     ({ chainId: 102031n, name: "creditcoin" }) as never;
-  service.chainInfo.getSupportedChainByKey = async () => ({
-    chainKey: 1,
-    chainId: 11155111,
-    chainName: "0x",
-    chainEncoding: 1,
+  service.chainInfo.getSupportedChains = async () => [
+    {
+      chainKey: 1,
+      chainId: 11155111,
+      chainName: "0x5365706f6c6961",
+      chainEncoding: 1,
+    },
+  ];
+  service.chainInfo.getLatestAttestedHeightAndHash = async () => ({
+    height: 50,
+    hash: "0x" + "3".repeat(64),
+    isAttestation: true,
+    exists: true,
   });
+  service.chainInfo.waitUntilHeightAttested = vi.fn(async () => undefined);
+  service.proofBuilder.waitUntilHeightAttested = vi.fn(async () => undefined);
   service.proofBuilder.getProof = async () => ({
     success: true,
     data: proofData,
@@ -155,7 +174,145 @@ describe("AttestcoinService", () => {
     service.blockProver.verifySingle = async () => false;
     expect(await service.verify(request)).toMatchObject({
       ok: false,
-      code: "PROOF_VERIFICATION_FAILURE",
+      code: "CREDITCOIN_VERIFICATION_FAILED",
+    });
+  });
+
+  it("waits for the source block to be attested before requesting a proof", async () => {
+    const { service, request } = await setup();
+    let latestAttestedHeight = 49;
+    service.chainInfo.getLatestAttestedHeightAndHash = async () => ({
+      height: latestAttestedHeight,
+      hash: "0x" + "3".repeat(64),
+      isAttestation: true,
+      exists: true,
+    });
+    service.chainInfo.waitUntilHeightAttested = vi.fn(async () => {
+      latestAttestedHeight = 50;
+    });
+    const getProof = vi.fn(
+      service.proofBuilder.getProof.bind(service.proofBuilder),
+    );
+    service.proofBuilder.getProof = getProof;
+
+    const result = await service.verify(request);
+
+    expect(result).toMatchObject({ ok: true });
+    expect(service.chainInfo.waitUntilHeightAttested).toHaveBeenCalledWith(
+      1,
+      50,
+      config.ATTESTATION_POLL_INTERVAL_MS,
+      config.ATTESTATION_WAIT_TIMEOUT_MS,
+      0,
+    );
+    expect(service.proofBuilder.waitUntilHeightAttested).toHaveBeenCalled();
+    expect(getProof).toHaveBeenCalledAfter(
+      service.chainInfo.waitUntilHeightAttested as ReturnType<typeof vi.fn>,
+    );
+  });
+
+  it("does not request a proof when attestation waiting times out", async () => {
+    const { service, request } = await setup();
+    service.chainInfo.getLatestAttestedHeightAndHash = async () => ({
+      height: 49,
+      hash: "0x" + "3".repeat(64),
+      isAttestation: true,
+      exists: true,
+    });
+    service.chainInfo.waitUntilHeightAttested = async () => {
+      throw new Error("attestation timeout");
+    };
+    const getProof = vi.fn();
+    service.proofBuilder.getProof = getProof;
+
+    await expect(service.verify(request)).resolves.toMatchObject({
+      ok: false,
+      code: "SOURCE_BLOCK_NOT_ATTESTED",
+    });
+    expect(getProof).not.toHaveBeenCalled();
+  });
+
+  it("requires the post-wait height to include the source block", async () => {
+    const { service, request } = await setup();
+    service.chainInfo.getLatestAttestedHeightAndHash = async () => ({
+      height: 49,
+      hash: "0x" + "3".repeat(64),
+      isAttestation: true,
+      exists: true,
+    });
+    const getProof = vi.fn();
+    service.proofBuilder.getProof = getProof;
+
+    await expect(service.verify(request)).resolves.toMatchObject({
+      ok: false,
+      code: "SOURCE_BLOCK_NOT_ATTESTED",
+    });
+    expect(getProof).not.toHaveBeenCalled();
+  });
+
+  it("reports a missing or unmined source transaction without calling providers", async () => {
+    const { service, request } = await setup();
+    service.sourceProvider.getTransaction = async () => null;
+    await expect(service.verify(request)).resolves.toMatchObject({
+      ok: false,
+      code: "SOURCE_TRANSACTION_NOT_FOUND",
+    });
+
+    service.sourceProvider.getTransaction = async () =>
+      ({ blockNumber: null }) as never;
+    await expect(service.verify(request)).resolves.toMatchObject({
+      ok: false,
+      code: "SOURCE_TRANSACTION_NOT_MINED",
+    });
+  });
+
+  it("distinguishes Proof Builder outages from missing proofs", async () => {
+    const { service, request } = await setup();
+    service.proofBuilder.getProof = async () => ({
+      success: false,
+      error:
+        "Failed to generate proof via API: AxiosError: Request failed with status code '404'",
+    });
+    await expect(service.verify(request)).resolves.toMatchObject({
+      ok: false,
+      code: "PROOF_NOT_FOUND",
+    });
+
+    service.proofBuilder.getProof = async () => ({
+      success: false,
+      error:
+        "Failed to generate proof via API: AxiosError: Request failed with status code '503'",
+    });
+    await expect(service.verify(request)).resolves.toMatchObject({
+      ok: false,
+      code: "PROOF_BUILDER_UNAVAILABLE",
+    });
+  });
+
+  it("does not request a proof while the Proof Builder is unavailable", async () => {
+    const { service, request } = await setup();
+    const getProof = vi.fn();
+    service.proofBuilder.getProof = getProof;
+    service.proofBuilder.waitUntilHeightAttested = async () => {
+      throw new Error("proof builder timeout");
+    };
+
+    await expect(service.verify(request)).resolves.toMatchObject({
+      ok: false,
+      code: "PROOF_BUILDER_UNAVAILABLE",
+    });
+    expect(getProof).not.toHaveBeenCalled();
+  });
+
+  it("maps a thrown Proof Builder request to an outage", async () => {
+    const { service, request } = await setup();
+    service.proofBuilder.getProof = async () => {
+      throw new Error("network error");
+    };
+
+    await expect(service.verify(request)).resolves.toMatchObject({
+      ok: false,
+      code: "PROOF_BUILDER_UNAVAILABLE",
     });
   });
 
@@ -213,6 +370,13 @@ describe("AttestcoinService", () => {
     service.blockProver.computeTransactionIndex = async () => 0;
     service.proofBuilder.getProof = async () => {
       throw new Error("secret");
+    };
+    expect(await service.verify(request)).toMatchObject({
+      ok: false,
+      code: "PROOF_BUILDER_UNAVAILABLE",
+    });
+    service.sourceProvider.getBlock = async () => {
+      throw new Error("source provider failure");
     };
     expect(await service.verify(request)).toMatchObject({
       ok: false,

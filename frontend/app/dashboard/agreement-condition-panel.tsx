@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type {
+  AgreementAction,
   AgreementConditionDetails,
   AgreementDetails,
 } from "@veyronis/shared";
@@ -38,6 +39,8 @@ export function AgreementConditionPanel({
   baseUrl,
   onVerificationChange,
   onSettlementChange,
+  executeAction,
+  actionBusy = false,
 }: {
   detail: AgreementDetails;
   baseUrl: string;
@@ -45,6 +48,8 @@ export function AgreementConditionPanel({
     verification: AgreementConditionDetails["verification"],
   ) => void;
   onSettlementChange?: () => Promise<void> | void;
+  executeAction?: (action: AgreementAction) => void;
+  actionBusy?: boolean;
 }) {
   const client = useMemo(
     () => new HttpAgreementCreationClient(baseUrl),
@@ -224,230 +229,484 @@ export function AgreementConditionPanel({
               </li>
             ))}
           </ol>
-          <dl className="overview-grid">
-            <div>
-              <dt>Status</dt>
-              <dd>
-                <StatusBadge
-                  tone={
-                    status === "Verified on-chain"
-                      ? "green"
-                      : status === "Verification failed" ||
-                          status === "Proof unavailable"
-                        ? "red"
-                        : "blue"
-                  }
-                >
-                  {status}
-                </StatusBadge>
-              </dd>
-            </div>
-            <div>
-              <dt>Provider truth</dt>
-              <dd>{verificationProviderName}</dd>
-            </div>
-            <div>
-              <dt>Seller settlement</dt>
-              <dd>
-                <StatusBadge
-                  tone={
-                    sellerSettled ? "green" : verifiedOnChain ? "amber" : "blue"
-                  }
-                >
-                  {sellerSettled
-                    ? "Credited by escrow"
-                    : verifiedOnChain
-                      ? lifecycle === "hybrid"
-                        ? "Awaiting buyer acceptance"
-                        : "Claim not accepted by escrow"
-                      : claimSettlementStatus(verification)}
-                </StatusBadge>
-              </dd>
-            </div>
-            <div>
-              <dt>Payment status</dt>
-              <dd>{externalPaymentStatus(detail, verification).label}</dd>
-            </div>
-            {sellerWithdrawable && chain && (
-              <div>
-                <dt>Withdrawable by seller</dt>
-                <dd>{formatEther(chain.withdrawalAmount)} ETH</dd>
-              </div>
-            )}
-            <div>
-              <dt>Source chain</dt>
-              <dd>{sourceChainLabel(condition.condition.sourceChainKey)}</dd>
-            </div>
-            <div>
-              <dt>Sender</dt>
-              <dd>
-                Seller ·{" "}
-                <span className="dash-mono">
-                  {condition.condition.expectedSender}
-                </span>
-              </dd>
-            </div>
-            <div>
-              <dt>Recipient</dt>
-              <dd>
-                Buyer ·{" "}
-                <span className="dash-mono">
-                  {condition.condition.expectedRecipient}
-                </span>
-              </dd>
-            </div>
-            <div>
-              <dt>Asset</dt>
-              <dd>{assetLabel(condition.condition, activeTokenMetadata)}</dd>
-            </div>
-            {condition.condition.tokenContract && (
-              <div>
-                <dt>Token contract</dt>
-                <dd className="copy-field">
-                  <span className="dash-mono">
-                    {shortAddress(condition.condition.tokenContract)}
-                  </span>
+          {lifecycle === "blockchain_condition_only" ? (
+            <div className="condition-card-grid">
+              <article className="condition-card">
+                <h3>Source transaction</h3>
+                <dl>
+                  <div>
+                    <dt>Transaction hash</dt>
+                    <dd className="copy-field">
+                      {verification?.transactionHash ? (
+                        <>
+                          <span className="dash-mono">
+                            {shortAddress(verification.transactionHash)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void copyValue(verification.transactionHash!)
+                            }
+                          >
+                            {copiedValue === verification.transactionHash
+                              ? "Copied"
+                              : "Copy"}
+                          </button>
+                        </>
+                      ) : (
+                        "Not submitted"
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Source chain</dt>
+                    <dd>
+                      {sourceChainLabel(condition.condition.sourceChainKey)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Source block</dt>
+                    <dd>
+                      {verification?.verifiedFacts?.sourceBlockNumber ??
+                        "Pending proof"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Sender</dt>
+                    <dd className="copy-field">
+                      <span className="dash-mono">
+                        {shortAddress(condition.condition.expectedSender)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void copyValue(condition.condition.expectedSender)
+                        }
+                      >
+                        {copiedValue === condition.condition.expectedSender
+                          ? "Copied"
+                          : "Copy"}
+                      </button>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Recipient</dt>
+                    <dd className="copy-field">
+                      <span className="dash-mono">
+                        {shortAddress(condition.condition.expectedRecipient)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void copyValue(condition.condition.expectedRecipient)
+                        }
+                      >
+                        {copiedValue === condition.condition.expectedRecipient
+                          ? "Copied"
+                          : "Copy"}
+                      </button>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Asset</dt>
+                    <dd>
+                      {assetLabel(condition.condition, activeTokenMetadata)}
+                    </dd>
+                  </div>
+                  {condition.condition.tokenContract && (
+                    <div>
+                      <dt>Token contract</dt>
+                      <dd className="copy-field">
+                        <span className="dash-mono">
+                          {shortAddress(condition.condition.tokenContract)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void copyValue(condition.condition.tokenContract!)
+                          }
+                        >
+                          {copiedValue === condition.condition.tokenContract
+                            ? "Copied"
+                            : "Copy"}
+                        </button>
+                      </dd>
+                    </div>
+                  )}
+                  <div>
+                    <dt>Required amount</dt>
+                    <dd>
+                      {conditionAmountLabel(
+                        condition.condition,
+                        activeTokenMetadata,
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Raw amount</dt>
+                    <dd>{condition.condition.amount} units</dd>
+                  </div>
+                </dl>
+              </article>
+              <article className="condition-card">
+                <h3>Proof &amp; attestation</h3>
+                <dl>
+                  <div>
+                    <dt>Status</dt>
+                    <dd>
+                      <StatusBadge
+                        tone={
+                          status === "Verified on-chain"
+                            ? "green"
+                            : status === "Waiting for Creditcoin attestation"
+                              ? "amber"
+                              : status === "Verification failed" ||
+                                  status === "Proof unavailable"
+                                ? "red"
+                                : "blue"
+                        }
+                      >
+                        {status}
+                      </StatusBadge>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Verification provider</dt>
+                    <dd>{verificationProviderName}</dd>
+                  </div>
+                  {verification?.status === "verification_failed" && (
+                    <div>
+                      <dt>Failure reason</dt>
+                      <dd>{failureLabel(verification.failureCode)}</dd>
+                    </div>
+                  )}
+                  {verification?.verifiedAt && (
+                    <div>
+                      <dt>Verified at</dt>
+                      <dd>
+                        {new Date(verification.verifiedAt).toLocaleString()}
+                      </dd>
+                    </div>
+                  )}
+                  {verification?.verifiedClaimId && (
+                    <div>
+                      <dt>Registry claim</dt>
+                      <dd className="copy-field">
+                        <span className="dash-mono">
+                          {shortAddress(verification.verifiedClaimId)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void copyValue(verification.verifiedClaimId!)
+                          }
+                        >
+                          {copiedValue === verification.verifiedClaimId
+                            ? "Copied"
+                            : "Copy"}
+                        </button>
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              </article>
+              <article className="condition-card">
+                <h3>Payment settlement</h3>
+                <dl>
+                  <div>
+                    <dt>Payment status</dt>
+                    <dd>
+                      <StatusBadge
+                        tone={externalPaymentStatus(detail, verification).tone}
+                      >
+                        {externalPaymentStatus(detail, verification).label}
+                      </StatusBadge>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Seller settlement</dt>
+                    <dd>
+                      {sellerSettled
+                        ? "Credited by escrow"
+                        : claimSettlementStatus(verification)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Contract state</dt>
+                    <dd>{chain?.state ?? "Not deployed"}</dd>
+                  </div>
+                </dl>
+                {detail.actions.includes("deposit") && executeAction && (
                   <button
+                    className="dash-primary"
                     type="button"
-                    onClick={() =>
-                      void copyValue(condition.condition.tokenContract!)
+                    disabled={actionBusy}
+                    onClick={() => executeAction("deposit")}
+                  >
+                    Fund Contract{" "}
+                    {chain ? formatEther(chain.requiredAmount) : ""} ETH
+                  </button>
+                )}
+              </article>
+              {sellerWithdrawable && chain && (
+                <article className="condition-card withdrawal-card">
+                  <h3>Seller withdrawal</h3>
+                  <strong>
+                    {formatEther(chain.withdrawalAmount)} ETH available
+                  </strong>
+                  <p>
+                    The escrow contract credited this internal withdrawal
+                    balance. The seller’s wallet is paid only after withdrawal.
+                  </p>
+                  {detail.actions.includes("withdraw") && executeAction && (
+                    <button
+                      className="dash-primary"
+                      type="button"
+                      disabled={actionBusy}
+                      onClick={() => executeAction("withdraw")}
+                    >
+                      Withdraw {formatEther(chain.withdrawalAmount)} ETH
+                    </button>
+                  )}
+                </article>
+              )}
+            </div>
+          ) : (
+            <dl className="overview-grid">
+              <div>
+                <dt>Status</dt>
+                <dd>
+                  <StatusBadge
+                    tone={
+                      status === "Verified on-chain"
+                        ? "green"
+                        : status === "Verification failed" ||
+                            status === "Proof unavailable"
+                          ? "red"
+                          : "blue"
                     }
                   >
-                    {copiedValue === condition.condition.tokenContract
-                      ? "Copied"
-                      : "Copy"}
-                  </button>
+                    {status}
+                  </StatusBadge>
                 </dd>
               </div>
-            )}
-            <div>
-              <dt>Required amount</dt>
-              <dd>
-                {conditionAmountLabel(condition.condition, activeTokenMetadata)}{" "}
-                ({amountRuleLabel(condition.condition.amountRule)})
-              </dd>
-            </div>
-            <div>
-              <dt>Raw amount</dt>
-              <dd>{condition.condition.amount} units</dd>
-            </div>
-            {verification?.transactionHash && (
               <div>
-                <dt>Transaction hash</dt>
-                <dd className="dash-mono">{verification.transactionHash}</dd>
-              </div>
-            )}
-            {verification?.verifiedAmount && (
-              <div>
-                <dt>Verified amount</dt>
-                <dd>{verification.verifiedAmount} base units</dd>
-              </div>
-            )}
-            {verification?.verifiedAt && (
-              <div>
-                <dt>Verified at</dt>
-                <dd>{new Date(verification.verifiedAt).toLocaleString()}</dd>
-              </div>
-            )}
-            {verification?.id && (
-              <div>
-                <dt>Verification ID</dt>
-                <dd className="dash-mono">{verification.id}</dd>
-              </div>
-            )}
-            {verification?.verifiedClaimId && (
-              <div>
-                <dt>Registry claim</dt>
-                <dd className="dash-mono">{verification.verifiedClaimId}</dd>
-              </div>
-            )}
-          </dl>
-          {verification?.verifiedFacts && (
-            <details className="technical-details verified-facts" open>
-              <summary>Verified facts</summary>
-              <dl>
-                <div>
-                  <dt>Transaction hash</dt>
-                  <dd className="dash-mono">
-                    {verification.verifiedFacts.sourceTransactionHash}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Source chain / ID</dt>
-                  <dd>
-                    {verification.verifiedFacts.sourceChainKey} /{" "}
-                    {verification.verifiedFacts.chainId}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Source block</dt>
-                  <dd>{verification.verifiedFacts.sourceBlockNumber}</dd>
-                </div>
-                <div>
-                  <dt>Sender</dt>
-                  <dd className="dash-mono">
-                    {verification.verifiedFacts.sender}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Recipient</dt>
-                  <dd className="dash-mono">
-                    {verification.verifiedFacts.recipient}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Asset</dt>
-                  <dd className="dash-mono">
-                    {verification.verifiedFacts.asset}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Amount</dt>
-                  <dd>{verification.verifiedFacts.amount} base units</dd>
-                </div>
-                <div>
-                  <dt>Transaction inclusion</dt>
-                  <dd>Confirmed</dd>
-                </div>
-                <div>
-                  <dt>Transaction success</dt>
-                  <dd>Confirmed</dd>
-                </div>
-                <div>
-                  <dt>Condition match</dt>
-                  <dd>Confirmed</dd>
-                </div>
-              </dl>
-            </details>
-          )}
-          <details className="technical-details">
-            <summary>Technical details</summary>
-            <dl>
-              <div>
-                <dt>Source chain key</dt>
-                <dd>{condition.condition.sourceChainKey}</dd>
+                <dt>Provider truth</dt>
+                <dd>{verificationProviderName}</dd>
               </div>
               <div>
-                <dt>EVM chain ID</dt>
-                <dd>{verification?.verifiedFacts?.chainId ?? "11155111"}</dd>
-              </div>
-              <div>
-                <dt>Raw amount</dt>
-                <dd className="dash-mono">
-                  {condition.condition.amount} base units
+                <dt>Seller settlement</dt>
+                <dd>
+                  <StatusBadge
+                    tone={
+                      sellerSettled
+                        ? "green"
+                        : verifiedOnChain
+                          ? "amber"
+                          : "blue"
+                    }
+                  >
+                    {sellerSettled
+                      ? "Credited by escrow"
+                      : verifiedOnChain
+                        ? lifecycle === "hybrid"
+                          ? "Awaiting buyer acceptance"
+                          : "Claim not accepted by escrow"
+                        : claimSettlementStatus(verification)}
+                  </StatusBadge>
                 </dd>
+              </div>
+              <div>
+                <dt>Payment status</dt>
+                <dd>{externalPaymentStatus(detail, verification).label}</dd>
+              </div>
+              {sellerWithdrawable && chain && (
+                <div>
+                  <dt>Withdrawable by seller</dt>
+                  <dd>{formatEther(chain.withdrawalAmount)} ETH</dd>
+                </div>
+              )}
+              <div>
+                <dt>Source chain</dt>
+                <dd>{sourceChainLabel(condition.condition.sourceChainKey)}</dd>
+              </div>
+              <div>
+                <dt>Sender</dt>
+                <dd>
+                  Seller ·{" "}
+                  <span className="dash-mono">
+                    {condition.condition.expectedSender}
+                  </span>
+                </dd>
+              </div>
+              <div>
+                <dt>Recipient</dt>
+                <dd>
+                  Buyer ·{" "}
+                  <span className="dash-mono">
+                    {condition.condition.expectedRecipient}
+                  </span>
+                </dd>
+              </div>
+              <div>
+                <dt>Asset</dt>
+                <dd>{assetLabel(condition.condition, activeTokenMetadata)}</dd>
               </div>
               {condition.condition.tokenContract && (
                 <div>
                   <dt>Token contract</dt>
-                  <dd className="dash-mono">
-                    {condition.condition.tokenContract}
+                  <dd className="copy-field">
+                    <span className="dash-mono">
+                      {shortAddress(condition.condition.tokenContract)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void copyValue(condition.condition.tokenContract!)
+                      }
+                    >
+                      {copiedValue === condition.condition.tokenContract
+                        ? "Copied"
+                        : "Copy"}
+                    </button>
                   </dd>
                 </div>
               )}
+              <div>
+                <dt>Required amount</dt>
+                <dd>
+                  {conditionAmountLabel(
+                    condition.condition,
+                    activeTokenMetadata,
+                  )}{" "}
+                  ({amountRuleLabel(condition.condition.amountRule)})
+                </dd>
+              </div>
+              <div>
+                <dt>Raw amount</dt>
+                <dd>{condition.condition.amount} units</dd>
+              </div>
+              {verification?.transactionHash && (
+                <div>
+                  <dt>Transaction hash</dt>
+                  <dd className="dash-mono">{verification.transactionHash}</dd>
+                </div>
+              )}
+              {verification?.verifiedAmount && (
+                <div>
+                  <dt>Verified amount</dt>
+                  <dd>{verification.verifiedAmount} base units</dd>
+                </div>
+              )}
+              {verification?.verifiedAt && (
+                <div>
+                  <dt>Verified at</dt>
+                  <dd>{new Date(verification.verifiedAt).toLocaleString()}</dd>
+                </div>
+              )}
+              {verification?.id && (
+                <div>
+                  <dt>Verification ID</dt>
+                  <dd className="dash-mono">{verification.id}</dd>
+                </div>
+              )}
+              {verification?.verifiedClaimId && (
+                <div>
+                  <dt>Registry claim</dt>
+                  <dd className="dash-mono">{verification.verifiedClaimId}</dd>
+                </div>
+              )}
             </dl>
-          </details>
-          {verifiedOnChain && (
+          )}
+          {lifecycle !== "blockchain_condition_only" &&
+            verification?.verifiedFacts && (
+              <details className="technical-details verified-facts" open>
+                <summary>Verified facts</summary>
+                <dl>
+                  <div>
+                    <dt>Transaction hash</dt>
+                    <dd className="dash-mono">
+                      {verification.verifiedFacts.sourceTransactionHash}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Source chain / ID</dt>
+                    <dd>
+                      {verification.verifiedFacts.sourceChainKey} /{" "}
+                      {verification.verifiedFacts.chainId}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Source block</dt>
+                    <dd>{verification.verifiedFacts.sourceBlockNumber}</dd>
+                  </div>
+                  <div>
+                    <dt>Sender</dt>
+                    <dd className="dash-mono">
+                      {verification.verifiedFacts.sender}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Recipient</dt>
+                    <dd className="dash-mono">
+                      {verification.verifiedFacts.recipient}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Asset</dt>
+                    <dd className="dash-mono">
+                      {verification.verifiedFacts.asset}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Amount</dt>
+                    <dd>{verification.verifiedFacts.amount} base units</dd>
+                  </div>
+                  <div>
+                    <dt>Transaction inclusion</dt>
+                    <dd>Confirmed</dd>
+                  </div>
+                  <div>
+                    <dt>Transaction success</dt>
+                    <dd>Confirmed</dd>
+                  </div>
+                  <div>
+                    <dt>Condition match</dt>
+                    <dd>Confirmed</dd>
+                  </div>
+                </dl>
+              </details>
+            )}
+          {lifecycle !== "blockchain_condition_only" && (
+            <details className="technical-details">
+              <summary>Technical details</summary>
+              <dl>
+                <div>
+                  <dt>Source chain key</dt>
+                  <dd>{condition.condition.sourceChainKey}</dd>
+                </div>
+                <div>
+                  <dt>EVM chain ID</dt>
+                  <dd>{verification?.verifiedFacts?.chainId ?? "11155111"}</dd>
+                </div>
+                <div>
+                  <dt>Raw amount</dt>
+                  <dd className="dash-mono">
+                    {condition.condition.amount} base units
+                  </dd>
+                </div>
+                {condition.condition.tokenContract && (
+                  <div>
+                    <dt>Token contract</dt>
+                    <dd className="dash-mono">
+                      {condition.condition.tokenContract}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            </details>
+          )}
+          {lifecycle !== "blockchain_condition_only" && verifiedOnChain && (
             <ul className="condition-checks">
               <li>✓ Transaction included</li>
               <li>✓ Transaction succeeded</li>
@@ -488,7 +747,7 @@ export function AgreementConditionPanel({
                 >
                   {verifying
                     ? "Verifying..."
-                    : verification?.failureCode === "PROOF_UNAVAILABLE"
+                    : isRetryableVerificationFailure(verification?.failureCode)
                       ? "Retry verification"
                       : "Submit transaction hash"}
                 </button>
@@ -550,6 +809,21 @@ export function externalPaymentStatus(
   if (paymentUnlocked) return { label: "Unlocked", tone: "green" };
   if (
     verification?.status === "verification_failed" &&
+    verification.failureCode === "SOURCE_BLOCK_NOT_ATTESTED"
+  ) {
+    return {
+      label: "Locked — waiting for Creditcoin attestation",
+      tone: "amber",
+    };
+  }
+  if (
+    verification?.status === "verification_failed" &&
+    verification.failureCode === "PROOF_BUILDER_UNAVAILABLE"
+  ) {
+    return { label: "Locked — Proof Builder unavailable", tone: "amber" };
+  }
+  if (
+    verification?.status === "verification_failed" &&
     verification.failureCode === "PROOF_UNAVAILABLE"
   ) {
     return { label: "Locked — proof unavailable", tone: "red" };
@@ -582,6 +856,10 @@ export function conditionSummarySteps(
   verification: AgreementConditionDetails["verification"],
 ) {
   const paymentUnlocked = isEscrowPaymentUnlocked(detail, verification);
+  const waitingForAttestation =
+    verification?.status === "verification_failed" &&
+    (verification.failureCode === "SOURCE_BLOCK_NOT_ATTESTED" ||
+      verification.failureCode === "PROOF_BUILDER_UNAVAILABLE");
   const withdrawalAvailable =
     detail.chain !== undefined &&
     canWithdrawEscrowFunds(
@@ -601,12 +879,16 @@ export function conditionSummarySteps(
         verification?.status === "verification_in_progress" ||
         verification?.status === "verified"
           ? "Complete"
-          : verification?.status === "verification_failed"
-            ? "Failed"
-            : "Current",
+          : waitingForAttestation
+            ? "Waiting"
+            : verification?.status === "verification_failed"
+              ? "Failed"
+              : "Current",
       tone:
         verification?.status === "verification_failed"
-          ? "failed"
+          ? waitingForAttestation
+            ? "pending"
+            : "failed"
           : verification
             ? "complete"
             : "current",
@@ -615,13 +897,17 @@ export function conditionSummarySteps(
       label: "Verified on-chain",
       status: isVerifiedOnChain(detail, verification)
         ? "Complete"
-        : verification?.status === "verification_failed"
-          ? "Failed"
-          : "Pending",
+        : waitingForAttestation
+          ? "Waiting"
+          : verification?.status === "verification_failed"
+            ? "Failed"
+            : "Pending",
       tone: isVerifiedOnChain(detail, verification)
         ? "complete"
         : verification?.status === "verification_failed"
-          ? "failed"
+          ? waitingForAttestation
+            ? "pending"
+            : "failed"
           : "pending",
     },
     {
@@ -749,6 +1035,12 @@ export function conditionStatusLabel(
       : "Authorized claim pending contract acceptance";
   if (
     verification?.status === "verification_failed" &&
+    verification.failureCode === "SOURCE_BLOCK_NOT_ATTESTED"
+  ) {
+    return "Waiting for Creditcoin attestation";
+  }
+  if (
+    verification?.status === "verification_failed" &&
     verification.failureCode === "PROOF_UNAVAILABLE"
   ) {
     return "Proof unavailable";
@@ -765,9 +1057,36 @@ export function canSubmitCondition(
   return role === "seller" && verification?.status !== "verified";
 }
 
+export function isRetryableVerificationFailure(code: string | undefined) {
+  return (
+    code === "SOURCE_BLOCK_NOT_ATTESTED" ||
+    code === "PROOF_BUILDER_UNAVAILABLE" ||
+    code === "PROOF_NOT_FOUND" ||
+    code === "PROOF_UNAVAILABLE" ||
+    code === "INVALID_PROOF" ||
+    code === "PROOF_VERIFICATION_FAILURE" ||
+    code === "CREDITCOIN_VERIFICATION_FAILED" ||
+    code === "AUTHORIZED_CLAIM_FAILED" ||
+    code === "ESCROW_SETTLEMENT_FAILED" ||
+    code === "PROVIDER_FAILURE"
+  );
+}
+
 export function failureLabel(code: string | undefined) {
   if (code === "PROOF_UNAVAILABLE")
     return "The blockchain transaction is confirmed, but the cross-chain proof is not available yet. Wait for attestation and try again.";
+  if (code === "SOURCE_BLOCK_NOT_ATTESTED")
+    return "The source block is not attested on Creditcoin yet. Verification will retry safely after attestation.";
+  if (code === "PROOF_BUILDER_UNAVAILABLE")
+    return "The Proof Builder service is not ready for this attested block yet.";
+  if (code === "PROOF_NOT_FOUND")
+    return "The Proof Builder has no proof for this transaction yet.";
+  if (code === "CREDITCOIN_VERIFICATION_FAILED")
+    return "Creditcoin rejected the native transaction inclusion proof.";
+  if (code === "AUTHORIZED_CLAIM_FAILED")
+    return "The authorized EvidenceClaimRegistry submission did not complete.";
+  if (code === "ESCROW_SETTLEMENT_FAILED")
+    return "The escrow did not confirm the required settlement state.";
   if (code === "SUBJECT_MISMATCH")
     return "The verified sender did not match the condition.";
   if (code === "WRONG_RECIPIENT" || code === "WRONG_CALLDATA")

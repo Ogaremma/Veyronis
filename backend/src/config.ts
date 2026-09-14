@@ -16,6 +16,24 @@ const schema = z.object({
   CREDITCOIN_RPC_URL: z.string().url(),
   ATTESTCOIN_PROOF_BUILDER_URL: z.string().url(),
   SEPOLIA_CHAIN_KEY: z.coerce.number().int().positive().default(1),
+  ATTESTATION_POLL_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .min(250)
+    .max(60_000)
+    .default(5_000),
+  ATTESTATION_WAIT_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(900_000)
+    .default(60_000),
+  PROOF_BUILDER_WAIT_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(900_000)
+    .default(60_000),
   VEYRONIS_EVIDENCE_REGISTRY_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   VEYRONIS_VERIFIER_PRIVATE_KEY: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
 });
@@ -52,7 +70,9 @@ export const loadDeploymentConfig = (
 };
 
 const agreementServerSchema = deploymentSchema.extend({
-  APP_ENV: z.enum(["local", "development", "production"]).default("development"),
+  APP_ENV: z
+    .enum(["local", "development", "production"])
+    .default("development"),
   DATABASE_URL: z.string().min(1),
   BACKEND_HOST: z.string().optional(),
   BACKEND_PORT: z.coerce.number().int().positive().max(65535).optional(),

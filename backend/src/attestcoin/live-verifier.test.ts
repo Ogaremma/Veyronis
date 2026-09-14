@@ -7,7 +7,11 @@ const config: AppConfig = {
   CREDITCOIN_RPC_URL: "http://127.0.0.1:8545",
   ATTESTCOIN_PROOF_BUILDER_URL: "http://127.0.0.1:8080",
   SEPOLIA_CHAIN_KEY: 1,
-  VEYRONIS_EVIDENCE_REGISTRY_ADDRESS: "0x3000000000000000000000000000000000000003",
+  ATTESTATION_POLL_INTERVAL_MS: 250,
+  ATTESTATION_WAIT_TIMEOUT_MS: 1_000,
+  PROOF_BUILDER_WAIT_TIMEOUT_MS: 1_000,
+  VEYRONIS_EVIDENCE_REGISTRY_ADDRESS:
+    "0x3000000000000000000000000000000000000003",
   VEYRONIS_VERIFIER_PRIVATE_KEY: `0x${"11".repeat(32)}`,
 };
 
@@ -21,7 +25,11 @@ describe("createLiveAttestcoinVerifier", () => {
   it("uses Creditcoin only for proof verification and Sepolia for escrow and registry", async () => {
     const creditcoin = fakeProvider(102031n);
     const sepolia = fakeProvider(11155111n);
-    const verifier = await createLiveAttestcoinVerifier(config, sepolia, creditcoin);
+    const verifier = await createLiveAttestcoinVerifier(
+      config,
+      sepolia,
+      creditcoin,
+    );
 
     expect((verifier as any).proofVerifier.creditcoinProvider).toBe(creditcoin);
     expect((verifier as any).escrowReader.runner).toBe(sepolia);

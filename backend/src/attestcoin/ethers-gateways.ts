@@ -5,9 +5,14 @@ import {
   type Log,
   type LogDescription,
   type Signer,
+  type TransactionReceipt,
+  type TransactionResponse,
   getAddress,
 } from "ethers";
-import { computeSourceEvidenceKey } from "./attestcoin-verifier.js";
+import {
+  computeClaimId,
+  computeSourceEvidenceKey,
+} from "./attestcoin-verifier.js";
 import type {
   EscrowContextReader,
   EscrowDisputeContext,
@@ -120,6 +125,8 @@ export class EthersEscrowContextReader implements EscrowContextReader {
 export class EthersEvidenceClaimRegistryGateway implements EvidenceClaimRegistryGateway {
   private readonly registry: Contract;
   private readonly signer: Signer;
+  private submissionTail: Promise<void> = Promise.resolve();
+  private readonly claimSubmissions = new Map<string, PendingClaimSubmission>();
 
   constructor(registryAddress: string, signer: Signer) {
     this.signer = signer;
@@ -173,6 +180,42 @@ export class EthersEvidenceClaimRegistryGateway implements EvidenceClaimRegistry
       | "submitVerifiedConditionClaim"
       | "submitVerifiedPrerequisiteClaim",
   ): Promise<RegistrySubmission> {
+    const claimId = computeClaimId(claim);
+    let pending = this.claimSubmissions.get(claimId);
+    if (!pending) {
+      pending = { claim, functionName };
+      this.claimSubmissions.set(claimId, pending);
+    } else if (pending.functionName !== functionName) {
+      throw new Error("Claim is already queued for another submission mode");
+    }
+    if (pending.current) return pending.current;
+
+    const current = this.serializeSubmission(() =>
+      this.processClaimSubmission(claimId, pending!),
+    );
+    pending.current = current;
+    void current
+      .finally(() => {
+        delete pending!.current;
+      })
+      .catch(() => undefined);
+    return current;
+  }
+
+  private serializeSubmission<T>(work: () => Promise<T>): Promise<T> {
+    const result = this.submissionTail.then(work, work);
+    this.submissionTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  private async processClaimSubmission(
+    claimId: string,
+    pending: PendingClaimSubmission,
+  ): Promise<RegistrySubmission> {
+    const { claim, functionName } = pending;
     const authorizedVerifier = await this.authorizedVerifier();
     const signerAddress = await this.signer.getAddress();
     if (getAddress(signerAddress) !== getAddress(authorizedVerifier))
@@ -180,8 +223,15 @@ export class EthersEvidenceClaimRegistryGateway implements EvidenceClaimRegistry
 
     const submit = this.registry.getFunction(functionName);
     const expectedClaimId = (await submit.staticCall(claim)) as string;
-    const transaction = await submit(claim);
-    const receipt = await transaction.wait();
+    if (expectedClaimId.toLowerCase() !== claimId.toLowerCase())
+      throw new Error(
+        "Registry claim ID did not match the deterministic claim ID",
+      );
+    if (!pending.transaction) {
+      pending.transaction = (await submit(claim)) as TransactionResponse;
+    }
+    const transaction = pending.transaction;
+    const receipt = await this.waitForReceipt(transaction);
     if (!receipt || receipt.status !== 1)
       throw new Error("Registry transaction was not mined successfully");
 
@@ -220,6 +270,35 @@ export class EthersEvidenceClaimRegistryGateway implements EvidenceClaimRegistry
         "Registry post-submission state did not match the accepted claim",
       );
 
+    this.claimSubmissions.delete(claimId);
     return { claimId: expectedClaimId, transactionHash: transaction.hash };
   }
+
+  private async waitForReceipt(
+    transaction: TransactionResponse,
+  ): Promise<TransactionReceipt | null> {
+    try {
+      return await transaction.wait();
+    } catch (error) {
+      if (!this.signer.provider) throw error;
+      const receipt = await this.signer.provider.getTransactionReceipt(
+        transaction.hash,
+      );
+      if (receipt) return receipt;
+      throw new Error(
+        `Registry transaction ${transaction.hash} is pending; retry will resume this transaction`,
+        { cause: error },
+      );
+    }
+  }
+}
+
+interface PendingClaimSubmission {
+  claim: VerifiedEvidenceClaim;
+  functionName:
+    | "submitVerifiedClaim"
+    | "submitVerifiedConditionClaim"
+    | "submitVerifiedPrerequisiteClaim";
+  transaction?: TransactionResponse;
+  current?: Promise<RegistrySubmission>;
 }

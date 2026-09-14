@@ -35,13 +35,16 @@ function fakeRegistry(options: {
   consumed?: boolean;
   boundEscrow?: string;
   authorizedVerifier?: string;
+  wait?: () => Promise<{ status: number; logs: object[] }>;
 }) {
   const transaction = {
     hash: `0x${"66".repeat(32)}`,
-    wait: async () => ({
-      status: options.status ?? 1,
-      logs: [{}],
-    }),
+    wait:
+      options.wait ??
+      (async () => ({
+        status: options.status ?? 1,
+        logs: [{}],
+      })),
   };
   const submit = vi.fn(async () => transaction);
   (submit as any).staticCall = async () =>
@@ -143,5 +146,117 @@ describe("EthersEvidenceClaimRegistryGateway", () => {
     await expect(gateway.submitVerifiedClaim(claim)).rejects.toThrow(
       "Registry post-submission state did not match the accepted claim",
     );
+  });
+
+  it("shares one broadcast across concurrent duplicate claim requests", async () => {
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const gateway = gatewayWithFakeRegistry({
+      wait: async () => {
+        await waiting;
+        return { status: 1, logs: [{}] };
+      },
+    });
+
+    const first = gateway.submitVerifiedConditionClaim(claim);
+    const second = gateway.submitVerifiedConditionClaim(claim);
+    release();
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+
+    const submit = (gateway as any).registry.getFunction(
+      "submitVerifiedConditionClaim",
+    );
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it("serializes distinct claim submission work", async () => {
+    const gateway = gatewayWithFakeRegistry({});
+    const order: string[] = [];
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const first = (gateway as any).serializeSubmission(async () => {
+      order.push("first-start");
+      await waiting;
+      order.push("first-end");
+    });
+    const second = (gateway as any).serializeSubmission(async () => {
+      order.push("second-start");
+    });
+
+    await Promise.resolve();
+    expect(order).toEqual(["first-start"]);
+    release();
+    await Promise.all([first, second]);
+    expect(order).toEqual(["first-start", "first-end", "second-start"]);
+  });
+
+  it("reconciles a lost receipt response without rebroadcasting", async () => {
+    const gateway = gatewayWithFakeRegistry({
+      wait: async () => {
+        throw new Error("response lost");
+      },
+    });
+    (gateway as any).signer = {
+      getAddress: async () => signerAddress,
+      provider: {
+        getTransactionReceipt: async () => ({ status: 1, logs: [{}] }),
+      },
+    };
+
+    await expect(gateway.submitVerifiedClaim(claim)).resolves.toMatchObject({
+      claimId: expectedClaimId,
+    });
+    expect(
+      (gateway as any).registry.getFunction("submitVerifiedClaim"),
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes a pending transaction on retry without a duplicate broadcast", async () => {
+    let waits = 0;
+    const gateway = gatewayWithFakeRegistry({
+      wait: async () => {
+        waits += 1;
+        if (waits === 1) throw new Error("temporarily unavailable");
+        return { status: 1, logs: [{}] };
+      },
+    });
+    (gateway as any).signer = {
+      getAddress: async () => signerAddress,
+      provider: { getTransactionReceipt: async () => null },
+    };
+
+    await expect(gateway.submitVerifiedClaim(claim)).rejects.toThrow(
+      "is pending; retry will resume",
+    );
+    await expect(gateway.submitVerifiedClaim(claim)).resolves.toMatchObject({
+      claimId: expectedClaimId,
+    });
+    expect(
+      (gateway as any).registry.getFunction("submitVerifiedClaim"),
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects concurrent attempts to submit one claim through different modes", async () => {
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const gateway = gatewayWithFakeRegistry({
+      wait: async () => {
+        await waiting;
+        return { status: 1, logs: [{}] };
+      },
+    });
+
+    const first = gateway.submitVerifiedClaim(claim);
+    await expect(gateway.submitVerifiedConditionClaim(claim)).rejects.toThrow(
+      "already queued for another submission mode",
+    );
+    release();
+    await expect(first).resolves.toMatchObject({ claimId: expectedClaimId });
   });
 });

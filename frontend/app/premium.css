@@ -324,6 +324,61 @@
   list-style: none;
 }
 
+.condition-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.condition-card {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid rgba(126, 180, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(2, 12, 30, 0.46);
+}
+
+.condition-card h3 {
+  margin: 0;
+  color: #d9ecff;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.condition-card dl {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.condition-card dl > div {
+  display: grid;
+  gap: 5px;
+}
+
+.condition-card dt {
+  color: #7f9dc0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.condition-card dd {
+  margin: 0;
+  color: #eaf5ff;
+  font-size: 13px;
+}
+
+.condition-card.withdrawal-card strong {
+  color: #9ff4d7;
+  font-size: 20px;
+}
+
 .copy-field {
   display: flex;
   align-items: center;
@@ -528,6 +583,7 @@
     align-items: flex-start;
   }
   .condition-path,
+  .condition-card-grid,
   .condition-mode,
   .participant-grid,
   .hybrid-track-grid {

@@ -15,11 +15,16 @@ import type {
   EscrowContextReader,
   EvidenceClaimRegistryGateway,
   EvidencePolicyEvaluator,
+  RegistrySubmission,
 } from "./verifier-types.js";
 
 const AWAITING_DELIVERY_STATE = 1;
 const DISPUTED_STATE = 3;
 const coder = AbiCoder.defaultAbiCoder();
+
+interface AttestcoinDiagnosticLogger {
+  info(message: string, details?: Record<string, unknown>): void;
+}
 
 export class AttestcoinVerifier {
   constructor(
@@ -27,6 +32,7 @@ export class AttestcoinVerifier {
     private readonly policyEvaluator: EvidencePolicyEvaluator,
     private readonly escrowReader: EscrowContextReader,
     private readonly registry: EvidenceClaimRegistryGateway,
+    private readonly logger: AttestcoinDiagnosticLogger = console,
   ) {}
 
   async verifyAndSubmit(
@@ -104,6 +110,59 @@ export class AttestcoinVerifier {
       );
     }
 
+    const computedCommitment = computeEvidenceCommitment(
+      request.evidencePolicyCommitment,
+      interpreted.evidenceType,
+      transaction.sourceChainKey,
+      transaction.sourceTransactionHash,
+      interpreted.subject,
+    );
+    if (!sameHex(computedCommitment, request.evidenceCommitment)) {
+      return failure(
+        "EVIDENCE_COMMITMENT_MISMATCH",
+        "Normalized evidence does not produce the dispute commitment",
+      );
+    }
+
+    const claim: VerifiedEvidenceClaim = {
+      escrow: getAddress(request.escrowAddress),
+      agreementCommitment: request.agreementCommitment,
+      evidencePolicyCommitment: request.evidencePolicyCommitment,
+      evidenceCommitment: computedCommitment,
+      evidenceType: interpreted.evidenceType,
+      sourceChainKey: transaction.sourceChainKey,
+      sourceTransactionHash: transaction.sourceTransactionHash,
+      subject: getAddress(interpreted.subject),
+    };
+    const claimId = computeClaimId(claim);
+    const sourceEvidenceKey = computeSourceEvidenceKey(claim);
+    let claimAlreadySubmitted = false;
+    try {
+      const [consumed, boundEscrow] = await Promise.all([
+        this.registry.isClaimConsumed(claimId),
+        this.registry.sourceEvidenceEscrow(sourceEvidenceKey),
+      ]);
+      claimAlreadySubmitted = sameAddress(boundEscrow, claim.escrow);
+      if (
+        (consumed || !sameAddress(boundEscrow, ZeroAddress)) &&
+        !claimAlreadySubmitted
+      ) {
+        return failure(
+          "REPLAY_DETECTED",
+          "The normalized evidence was already consumed or bound",
+        );
+      }
+    } catch (error) {
+      this.log("claim.idempotency_check_failed", {
+        claimId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return failure(
+        "AUTHORIZED_CLAIM_FAILED",
+        "The authorized claim could not be checked",
+      );
+    }
+
     let escrow;
     try {
       escrow = await this.escrowReader.readDisputeContext(
@@ -149,13 +208,16 @@ export class AttestcoinVerifier {
           "The escrow settlement mode does not match the verified condition",
         );
       }
-      if (escrow.state !== AWAITING_DELIVERY_STATE) {
+      if (!claimAlreadySubmitted && escrow.state !== AWAITING_DELIVERY_STATE) {
         return failure(
           "ESCROW_NOT_SETTLEABLE",
           "The escrow is not awaiting a verified condition",
         );
       }
-      if (!sameHex(escrow.activeEvidenceCommitment, ZeroHash)) {
+      if (
+        !claimAlreadySubmitted &&
+        !sameHex(escrow.activeEvidenceCommitment, ZeroHash)
+      ) {
         return failure(
           "EVIDENCE_COMMITMENT_MISMATCH",
           "The escrow already has active evidence",
@@ -187,30 +249,6 @@ export class AttestcoinVerifier {
       );
     }
 
-    const computedCommitment = computeEvidenceCommitment(
-      request.evidencePolicyCommitment,
-      interpreted.evidenceType,
-      transaction.sourceChainKey,
-      transaction.sourceTransactionHash,
-      interpreted.subject,
-    );
-    if (!sameHex(computedCommitment, request.evidenceCommitment)) {
-      return failure(
-        "EVIDENCE_COMMITMENT_MISMATCH",
-        "Normalized evidence does not produce the dispute commitment",
-      );
-    }
-
-    const claim: VerifiedEvidenceClaim = {
-      escrow: getAddress(request.escrowAddress),
-      agreementCommitment: request.agreementCommitment,
-      evidencePolicyCommitment: request.evidencePolicyCommitment,
-      evidenceCommitment: computedCommitment,
-      evidenceType: interpreted.evidenceType,
-      sourceChainKey: transaction.sourceChainKey,
-      sourceTransactionHash: transaction.sourceTransactionHash,
-      subject: getAddress(interpreted.subject),
-    };
     const verifiedFacts: VerifiedConditionFacts = {
       sourceChainKey: transaction.sourceChainKey,
       sourceTransactionHash: transaction.sourceTransactionHash,
@@ -225,71 +263,142 @@ export class AttestcoinVerifier {
       transactionSucceeded: true,
       conditionMatch: true,
     };
-    const claimId = computeClaimId(claim);
-    const sourceEvidenceKey = computeSourceEvidenceKey(claim);
-
     try {
-      const [consumed, boundEscrow] = await Promise.all([
-        this.registry.isClaimConsumed(claimId),
-        this.registry.sourceEvidenceEscrow(sourceEvidenceKey),
-      ]);
-      if (consumed || !sameAddress(boundEscrow, ZeroAddress)) {
-        return failure(
-          "REPLAY_DETECTED",
-          "The normalized evidence was already consumed or bound",
-        );
-      }
-      const submission =
-        submissionMode === "direct_settlement"
-          ? await this.registry.submitVerifiedConditionClaim(claim)
-          : submissionMode === "prerequisite_record"
-            ? await this.registry.submitVerifiedPrerequisiteClaim(claim)
-            : await this.registry.submitVerifiedClaim(claim);
-      if (submissionMode === "direct_settlement") {
-        const settlement = await this.escrowReader.readSettlementContext(
-          request.escrowAddress,
-        );
-        if (
-          settlement.state !== 4 ||
-          !sameHex(settlement.verifiedClaimId, submission.claimId) ||
-          settlement.sellerWithdrawal <= 0n
-        ) {
+      this.log("claim.idempotency", {
+        claimId,
+        submissionMode,
+        claimAlreadySubmitted,
+      });
+      let submission: RegistrySubmission | undefined;
+      if (!claimAlreadySubmitted) {
+        try {
+          submission =
+            submissionMode === "direct_settlement"
+              ? await this.registry.submitVerifiedConditionClaim(claim)
+              : submissionMode === "prerequisite_record"
+                ? await this.registry.submitVerifiedPrerequisiteClaim(claim)
+                : await this.registry.submitVerifiedClaim(claim);
+          this.log("claim.submission", {
+            claimId,
+            submissionMode,
+            registryTransactionHash: submission.transactionHash,
+          });
+        } catch (error) {
+          this.log("claim.submission_failed", {
+            claimId,
+            submissionMode,
+            error: error instanceof Error ? error.message : String(error),
+          });
           return failure(
-            "REGISTRY_REJECTION",
+            "AUTHORIZED_CLAIM_FAILED",
+            "The authorized EvidenceClaimRegistry submission failed",
+          );
+        }
+      }
+      const acceptedClaimId = submission?.claimId ?? claimId;
+      if (submissionMode === "direct_settlement") {
+        let settlement;
+        try {
+          settlement = await this.escrowReader.readSettlementContext(
+            request.escrowAddress,
+          );
+        } catch (error) {
+          this.log("escrow.settlement_read_failed", {
+            claimId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return failure(
+            "ESCROW_SETTLEMENT_FAILED",
+            "The escrow settlement state could not be read",
+          );
+        }
+        const settled =
+          settlement.state === 4 &&
+          sameHex(settlement.verifiedClaimId, acceptedClaimId) &&
+          settlement.sellerWithdrawal > 0n;
+        this.log("escrow.settlement", {
+          claimId: acceptedClaimId,
+          submissionMode,
+          escrowState: settlement.state,
+          verifiedClaimId: settlement.verifiedClaimId,
+          sellerWithdrawal: settlement.sellerWithdrawal.toString(),
+          settled,
+        });
+        if (!settled) {
+          return failure(
+            "ESCROW_SETTLEMENT_FAILED",
             "The escrow did not credit the seller for the verified condition",
           );
         }
       } else {
         if (submissionMode === "prerequisite_record") {
-          const settlement = await this.escrowReader.readSettlementContext(
-            request.escrowAddress,
-          );
-          if (
-            settlement.state !== 1 ||
-            !sameHex(settlement.verifiedClaimId, submission.claimId) ||
-            !sameHex(settlement.activeEvidenceCommitment, ZeroHash) ||
-            settlement.sellerWithdrawal !== 0n
-          ) {
+          let settlement;
+          try {
+            settlement = await this.escrowReader.readSettlementContext(
+              request.escrowAddress,
+            );
+          } catch (error) {
+            this.log("escrow.settlement_read_failed", {
+              claimId,
+              error: error instanceof Error ? error.message : String(error),
+            });
             return failure(
-              "REGISTRY_REJECTION",
+              "ESCROW_SETTLEMENT_FAILED",
+              "The escrow prerequisite state could not be read",
+            );
+          }
+          const recorded =
+            settlement.state === 1 &&
+            sameHex(settlement.verifiedClaimId, acceptedClaimId) &&
+            sameHex(settlement.activeEvidenceCommitment, ZeroHash) &&
+            settlement.sellerWithdrawal === 0n;
+          this.log("escrow.settlement", {
+            claimId: acceptedClaimId,
+            submissionMode,
+            escrowState: settlement.state,
+            verifiedClaimId: settlement.verifiedClaimId,
+            activeEvidenceCommitment: settlement.activeEvidenceCommitment,
+            sellerWithdrawal: settlement.sellerWithdrawal.toString(),
+            recorded,
+          });
+          if (!recorded) {
+            return failure(
+              "ESCROW_SETTLEMENT_FAILED",
               "The escrow did not record the verified condition without settlement",
             );
           }
           return {
             ok: true,
             claim,
-            claimId: submission.claimId,
-            transactionHash: submission.transactionHash,
+            claimId: acceptedClaimId,
+            transactionHash:
+              submission?.transactionHash ?? request.transactionHash,
             verifiedAmount: interpreted.amount,
             verifiedFacts,
           };
         }
-        const verifiedClaimId = await this.escrowReader.readVerifiedClaimId(
-          request.escrowAddress,
-        );
-        if (!sameHex(verifiedClaimId, submission.claimId)) {
+        let verifiedClaimId;
+        try {
+          verifiedClaimId = await this.escrowReader.readVerifiedClaimId(
+            request.escrowAddress,
+          );
+        } catch (error) {
+          this.log("escrow.verified_claim_read_failed", {
+            claimId,
+            error: error instanceof Error ? error.message : String(error),
+          });
           return failure(
-            "REGISTRY_REJECTION",
+            "ESCROW_SETTLEMENT_FAILED",
+            "The escrow verified claim could not be read",
+          );
+        }
+        this.log("escrow.verified_claim", {
+          claimId: acceptedClaimId,
+          verifiedClaimId,
+        });
+        if (!sameHex(verifiedClaimId, acceptedClaimId)) {
+          return failure(
+            "ESCROW_SETTLEMENT_FAILED",
             "The escrow did not record the accepted claim",
           );
         }
@@ -297,17 +406,21 @@ export class AttestcoinVerifier {
       return {
         ok: true,
         claim,
-        claimId: submission.claimId,
-        transactionHash: submission.transactionHash,
+        claimId: acceptedClaimId,
+        transactionHash: submission?.transactionHash ?? request.transactionHash,
         verifiedAmount: interpreted.amount,
         verifiedFacts,
       };
     } catch {
       return failure(
-        "REGISTRY_REJECTION",
-        "EvidenceClaimRegistry rejected the verified claim",
+        "AUTHORIZED_CLAIM_FAILED",
+        "The authorized claim could not be checked",
       );
     }
+  }
+
+  private log(event: string, details: Record<string, unknown>): void {
+    this.logger.info(`attestcoin.${event}`, details);
   }
 }
 

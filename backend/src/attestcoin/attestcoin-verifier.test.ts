@@ -7,6 +7,7 @@ import type {
 } from "@veyronis/shared";
 import {
   AttestcoinVerifier,
+  computeClaimId,
   computeEvidenceCommitment,
   computeEvidencePolicyCommitment,
 } from "./attestcoin-verifier.js";
@@ -49,8 +50,6 @@ const evidenceCommitment = computeEvidenceCommitment(
   transactionHash,
   buyer,
 );
-const acceptedClaimId = id("accepted claim");
-
 const request: AttestcoinProofRequest = {
   escrowAddress,
   sourceChainKey: 1,
@@ -62,6 +61,16 @@ const request: AttestcoinProofRequest = {
   subject: buyer,
   policy,
 };
+const acceptedClaimId = computeClaimId({
+  escrow: escrowAddress,
+  agreementCommitment,
+  evidencePolicyCommitment: policyCommitment,
+  evidenceCommitment,
+  evidenceType,
+  sourceChainKey: 1,
+  sourceTransactionHash: transactionHash,
+  subject: buyer,
+});
 
 class FakeProofVerifier implements CryptographicProofVerifier {
   result: ProofVerificationResult = {
@@ -134,6 +143,7 @@ class FakeRegistry implements EvidenceClaimRegistryGateway {
   submitted: VerifiedEvidenceClaim | undefined;
   conditionSubmitted: VerifiedEvidenceClaim | undefined;
   prerequisiteSubmitted: VerifiedEvidenceClaim | undefined;
+  conditionSubmissionCount = 0;
   async isClaimConsumed() {
     return this.consumed;
   }
@@ -150,6 +160,7 @@ class FakeRegistry implements EvidenceClaimRegistryGateway {
   }
   async submitVerifiedConditionClaim(claim: VerifiedEvidenceClaim) {
     if (this.rejection) throw this.rejection;
+    this.conditionSubmissionCount += 1;
     this.conditionSubmitted = claim;
     return {
       claimId: acceptedClaimId,
@@ -258,6 +269,27 @@ describe("AttestcoinVerifier", () => {
     );
   });
 
+  it("retries an already-submitted settlement claim without duplicating it", async () => {
+    const { verifier, escrow, registry } = setup();
+    escrow.context.state = 1;
+    escrow.context.activeEvidenceCommitment = ZeroHash;
+    escrow.context.directConditionSettlement = true;
+    const directRequest = {
+      ...request,
+      conditionSubmission: "direct_settlement",
+    } as const;
+
+    const first = await verifier.verifyAndSubmit(directRequest);
+    expect(first.ok).toBe(true);
+    registry.boundEscrow = escrowAddress;
+    escrow.context.state = 4;
+
+    const retry = await verifier.verifyAndSubmit(directRequest);
+
+    expect(retry.ok).toBe(true);
+    expect(registry.conditionSubmissionCount).toBe(1);
+  });
+
   it("records hybrid conditions without settling them", async () => {
     const { verifier, escrow, registry } = setup();
     escrow.context.state = 1;
@@ -289,7 +321,7 @@ describe("AttestcoinVerifier", () => {
     escrow.context.directConditionSettlement = true;
     escrow.settlement.sellerWithdrawal = 0n;
 
-    await expectFailure(verifier, "REGISTRY_REJECTION", {
+    await expectFailure(verifier, "ESCROW_SETTLEMENT_FAILED", {
       ...request,
       conditionSubmission: "direct_settlement",
     });
@@ -343,7 +375,7 @@ describe("AttestcoinVerifier", () => {
     await expectFailure(verifier, "REPLAY_DETECTED");
     registry.consumed = false;
     registry.rejection = new Error("rejected");
-    await expectFailure(verifier, "REGISTRY_REJECTION");
+    await expectFailure(verifier, "AUTHORIZED_CLAIM_FAILED");
   });
 
   it("never calls escrow settlement directly", async () => {

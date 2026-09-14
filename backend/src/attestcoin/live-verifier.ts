@@ -15,7 +15,11 @@ export async function createLiveAttestcoinVerifier(
   sepoliaProvider: JsonRpcProvider,
   creditcoinProvider = new JsonRpcProvider(config.CREDITCOIN_RPC_URL),
 ): Promise<AttestcoinVerifier> {
-  const service = new AttestcoinService(config, creditcoinProvider);
+  const service = new AttestcoinService(
+    config,
+    sepoliaProvider,
+    creditcoinProvider,
+  );
   const [creditcoinNetwork, sepoliaNetwork] = await Promise.all([
     service.creditcoinProvider.getNetwork(),
     sepoliaProvider.getNetwork(),
@@ -25,11 +29,17 @@ export async function createLiveAttestcoinVerifier(
   if (sepoliaNetwork.chainId !== 11155111n)
     throw new Error("Sepolia RPC is connected to another chain");
 
-  const signer = new Wallet(config.VEYRONIS_VERIFIER_PRIVATE_KEY, sepoliaProvider);
+  const signer = new Wallet(
+    config.VEYRONIS_VERIFIER_PRIVATE_KEY,
+    sepoliaProvider,
+  );
   return new AttestcoinVerifier(
     service,
     new SourceTransactionPolicyEvaluator(),
     new EthersEscrowContextReader(sepoliaProvider),
-    new EthersEvidenceClaimRegistryGateway(config.VEYRONIS_EVIDENCE_REGISTRY_ADDRESS, signer),
+    new EthersEvidenceClaimRegistryGateway(
+      config.VEYRONIS_EVIDENCE_REGISTRY_ADDRESS,
+      signer,
+    ),
   );
 }

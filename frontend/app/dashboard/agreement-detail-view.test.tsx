@@ -149,6 +149,7 @@ describe("agreement guidance", () => {
       "resolveRelease",
       "resolveRefund",
     ];
+    detail.actions.push("deposit", "cancel");
 
     const html = renderDetail(detail);
 
@@ -158,6 +159,29 @@ describe("agreement guidance", () => {
     expect(html).not.toContain("Open dispute");
     expect(html).not.toContain("Resolve for seller");
     expect(html).not.toContain("Resolve for buyer");
+    expect(html).toContain("Contract terms and participants");
+    expect(html).not.toContain("Required order of operations");
+    expect(html).not.toContain("Authoritative escrow state");
+    expect(html).not.toContain("AVAILABLE ACTION");
+    expect(html).not.toContain("Advisory evidence");
+    expect(html).not.toContain("Transaction activity");
+    expect(html).not.toContain("Fund Contract");
+    expect(html).not.toContain("Cancel before payment");
+  });
+
+  it("retains lifecycle and evidence sections outside blockchain-only mode", () => {
+    const workOnly = renderDetail(detailFor("buyer", "AwaitingDelivery", "0"));
+    expect(workOnly).toContain("Authoritative escrow state");
+    expect(workOnly).toContain("AVAILABLE ACTION");
+    expect(workOnly).toContain("ADVISORY EVIDENCE");
+
+    const hybrid = detailFor("buyer", "AwaitingDelivery", "0");
+    hybrid.metadata.agreementMode = "hybrid";
+    hybrid.metadata.policy.evidenceType = id("SOURCE_PAYMENT");
+    const hybridHtml = renderDetail(hybrid);
+    expect(hybridHtml).toContain("Authoritative escrow state");
+    expect(hybridHtml).toContain("Blockchain verification");
+    expect(hybridHtml).toContain("Human review");
   });
 
   it("keeps buyer acceptance and refund actions for work-only agreements", () => {

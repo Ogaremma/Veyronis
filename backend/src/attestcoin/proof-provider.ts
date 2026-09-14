@@ -5,11 +5,17 @@ export type AttestcoinProof = proofProvider.ContinuityResponse;
 
 export interface AttestcoinProofProvider {
   getProof(transactionHash: string): Promise<AttestcoinProofResult>;
+  waitUntilHeightAttested?(
+    chainKey: number,
+    targetHeight: number,
+    pollIntervalMs?: number,
+    waitTimeoutMs?: number,
+    extraDelayMs?: number,
+  ): Promise<void>;
 }
 
 export type AttestcoinProofResult =
-  | { success: true; data: AttestcoinProof }
-  | { success: false; error?: string };
+  { success: true; data: AttestcoinProof } | { success: false; error?: string };
 
 /** Adapts the installed SDK ProofBuilder to the Veyronis boundary. */
 export class SdkAttestcoinProofProvider implements AttestcoinProofProvider {
@@ -17,9 +23,26 @@ export class SdkAttestcoinProofProvider implements AttestcoinProofProvider {
 
   async getProof(transactionHash: string): Promise<AttestcoinProofResult> {
     const result = await this.builder.getProof(transactionHash);
-    if (result.success && result.data) return { success: true, data: result.data };
+    if (result.success && result.data)
+      return { success: true, data: result.data };
     return result.error
       ? { success: false, error: result.error }
       : { success: false };
+  }
+
+  async waitUntilHeightAttested(
+    chainKey: number,
+    targetHeight: number,
+    pollIntervalMs?: number,
+    waitTimeoutMs?: number,
+    extraDelayMs?: number,
+  ): Promise<void> {
+    await this.builder.waitUntilHeightAttested(
+      chainKey,
+      targetHeight,
+      pollIntervalMs,
+      waitTimeoutMs,
+      extraDelayMs,
+    );
   }
 }
