@@ -106,7 +106,7 @@ describe("participant-specific agreement actions", () => {
   it("chooses buyer acceptance only for application or hybrid evidence", () => {
     expect(
       actionsFor("buyer", "AwaitingDelivery", 0n, "blockchain_condition_only"),
-    ).toEqual(["requestRefund", "openDispute"]);
+    ).toEqual([]);
     expect(
       actionsFor("buyer", "AwaitingDelivery", 0n, "application_work_evidence"),
     ).toEqual(["confirmDelivery", "requestRefund", "openDispute"]);
@@ -201,12 +201,60 @@ describe("participant-specific agreement actions", () => {
       role: "seller",
       chain: liveSnapshot,
       timeline: [],
-      actions: ["openDispute"],
+      actions: [],
     });
     expect(reader.readSnapshot).toHaveBeenCalledWith(
       liveMetadata.escrowAddress,
       liveMetadata.seller,
     );
+  });
+
+  it("filters legacy transaction-hash application evidence from external-only dashboards", async () => {
+    const legacyMetadata: AgreementMetadata = {
+      ...metadata,
+      id: id("legacy-external"),
+      escrowAddress: "0x7000000000000000000000000000000000000007",
+      deliverables: [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          title: "Legacy delivery",
+          description: "",
+          required: true,
+          active: true,
+          position: 0,
+          evidenceRequirements: [
+            {
+              id: "22222222-2222-4222-8222-222222222222",
+              label: "Proof of transaction",
+              kind: "TRANSACTION_HASH",
+              required: true,
+              configuration: {},
+              position: 0,
+            },
+          ],
+        },
+      ],
+    };
+    const legacySnapshot = {
+      ...snapshot,
+      escrowAddress: legacyMetadata.escrowAddress!,
+      state: "AwaitingDelivery" as const,
+    };
+    const repository = new InMemoryAgreementRepository();
+    await repository.createAgreement(legacyMetadata);
+    const reader = {
+      read: vi.fn(async () => ({ snapshot: legacySnapshot, timeline: [] })),
+      readSnapshot: vi.fn(async () => legacySnapshot),
+    };
+    const service = new AgreementDashboardService(repository, reader);
+
+    for (const address of [legacyMetadata.buyer, legacyMetadata.seller]) {
+      const list = await service.list(address);
+      expect(list[0]!.metadata.deliverables).toEqual([]);
+      const details = await service.details(legacyMetadata.id, address);
+      expect(details.metadata.deliverables).toEqual([]);
+      expect(details.actions).toEqual([]);
+    }
   });
 
   it("keeps participant-only details unavailable to unrelated wallets", async () => {

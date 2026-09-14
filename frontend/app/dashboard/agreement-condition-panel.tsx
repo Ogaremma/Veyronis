@@ -8,12 +8,30 @@ import type {
 import {
   agreementLifecycleMode,
   canWithdrawEscrowFunds,
-  conditionVerificationProviders,
   externalBlockchainConditionFromPolicy,
 } from "@veyronis/shared";
-import { formatEther } from "ethers";
+import {
+  BrowserProvider,
+  Contract,
+  formatEther,
+  formatUnits,
+  type Eip1193Provider,
+} from "ethers";
 import { HttpAgreementCreationClient } from "../agreement-client";
 import { StatusBadge } from "../ui/glass";
+
+export interface TokenMetadata {
+  symbol: string;
+  decimals: number;
+}
+
+const verificationProviderName = "Attestcoin Protocol on Creditcoin";
+const tokenMetadataFallbacks: Record<string, TokenMetadata> = {
+  "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238": {
+    symbol: "USDC",
+    decimals: 6,
+  },
+};
 
 export function AgreementConditionPanel({
   detail,
@@ -38,6 +56,8 @@ export function AgreementConditionPanel({
   const [available, setAvailable] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState("");
+  const [tokenMetadata, setTokenMetadata] = useState<TokenMetadata>();
+  const [copiedValue, setCopiedValue] = useState("");
   const configured = useMemo(
     () =>
       externalBlockchainConditionFromPolicy(detail.metadata.policy) !==
@@ -76,6 +96,32 @@ export function AgreementConditionPanel({
     void load();
   }, [configured, load]);
 
+  const tokenContract = condition?.condition.tokenContract;
+  useEffect(() => {
+    if (!tokenContract) {
+      setTokenMetadata(undefined);
+      return;
+    }
+    let active = true;
+    if (typeof window === "undefined" || !window.ethereum) {
+      setTokenMetadata(tokenMetadataFallback(tokenContract));
+      return;
+    }
+    const provider = new BrowserProvider(
+      window.ethereum as unknown as Eip1193Provider,
+    );
+    void resolveTokenMetadata(tokenContract, provider)
+      .then((metadata) => {
+        if (active) setTokenMetadata(metadata);
+      })
+      .catch(() => {
+        if (active) setTokenMetadata(tokenMetadataFallback(tokenContract));
+      });
+    return () => {
+      active = false;
+    };
+  }, [tokenContract]);
+
   async function verify() {
     setError("");
     setVerifying(true);
@@ -109,20 +155,32 @@ export function AgreementConditionPanel({
   }
 
   const verification = condition?.verification;
-  const status = conditionStatusLabel(verification, verifying);
   const chain = detail.chain;
   const verifiedOnChain = isVerifiedOnChain(detail, verification);
+  const status = conditionStatusLabel(verification, verifying, verifiedOnChain);
   const lifecycle = agreementLifecycleMode(detail.metadata);
   const sellerSettled = isEscrowPaymentUnlocked(detail, verification);
   const sellerWithdrawable =
     detail.role === "seller" &&
     chain !== undefined &&
     canWithdrawEscrowFunds(detail.role, chain.state, chain.withdrawalAmount);
+  const activeTokenMetadata = tokenContract
+    ? (tokenMetadata ?? tokenMetadataFallback(tokenContract))
+    : undefined;
+
+  async function copyValue(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedValue(value);
+    } catch {
+      setCopiedValue("");
+    }
+  }
 
   return (
     <section className="dash-panel condition-panel">
       <span className="dash-eyebrow">EXTERNAL BLOCKCHAIN CONDITION</span>
-      <h2>{condition ? conditionTitle(condition) : "Loading condition..."}</h2>
+      <h2>EXTERNAL BLOCKCHAIN CONDITION</h2>
       {verifiedOnChain && (
         <div className="verified-on-chain">
           <div>
@@ -131,13 +189,13 @@ export function AgreementConditionPanel({
           </div>
           <p>
             {sellerSettled
-              ? "Attestcoin/Creditcoin verified that the required blockchain transaction satisfies this agreement’s condition. The authorized claim was accepted and the escrow credited the seller."
-              : "Attestcoin/Creditcoin verified that the required blockchain transaction satisfies this agreement’s condition. The authorized claim was recorded; buyer acceptance is still required."}
+              ? "Attestcoin Protocol on Creditcoin verified the required blockchain transaction. The authorized claim was accepted and the escrow credited the seller’s internal withdrawal balance; it has not yet paid the seller’s wallet."
+              : "Attestcoin Protocol on Creditcoin verified the required blockchain transaction. The authorized claim was recorded; the escrow has not accepted it yet."}
           </p>
           <strong className="provider-truth">
             {condition
               ? verificationProviderLabel(condition, true)
-              : "Verified by Attestcoin + Creditcoin"}
+              : `Verified by ${verificationProviderName}`}
           </strong>
         </div>
       )}
@@ -186,12 +244,7 @@ export function AgreementConditionPanel({
             </div>
             <div>
               <dt>Provider truth</dt>
-              <dd>
-                {verificationProviderLabel(
-                  condition,
-                  verification?.status === "verified",
-                )}
-              </dd>
+              <dd>{verificationProviderName}</dd>
             </div>
             <div>
               <dt>Seller settlement</dt>
@@ -222,35 +275,65 @@ export function AgreementConditionPanel({
               </div>
             )}
             <div>
-              <dt>Source blockchain</dt>
+              <dt>Source chain</dt>
               <dd>{sourceChainLabel(condition.condition.sourceChainKey)}</dd>
             </div>
             <div>
               <dt>Sender</dt>
-              <dd className="dash-mono">
-                {condition.condition.expectedSender}
+              <dd>
+                Seller ·{" "}
+                <span className="dash-mono">
+                  {condition.condition.expectedSender}
+                </span>
               </dd>
             </div>
             <div>
               <dt>Recipient</dt>
-              <dd className="dash-mono">
-                {condition.condition.expectedRecipient}
+              <dd>
+                Buyer ·{" "}
+                <span className="dash-mono">
+                  {condition.condition.expectedRecipient}
+                </span>
               </dd>
             </div>
             <div>
               <dt>Asset</dt>
-              <dd className="dash-mono">{assetLabel(condition.condition)}</dd>
+              <dd>{assetLabel(condition.condition, activeTokenMetadata)}</dd>
             </div>
+            {condition.condition.tokenContract && (
+              <div>
+                <dt>Token contract</dt>
+                <dd className="copy-field">
+                  <span className="dash-mono">
+                    {shortAddress(condition.condition.tokenContract)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void copyValue(condition.condition.tokenContract!)
+                    }
+                  >
+                    {copiedValue === condition.condition.tokenContract
+                      ? "Copied"
+                      : "Copy"}
+                  </button>
+                </dd>
+              </div>
+            )}
             <div>
               <dt>Required amount</dt>
               <dd>
-                {conditionAmountLabel(condition.condition)} (
-                {amountRuleLabel(condition.condition.amountRule)})
+                {conditionAmountLabel(condition.condition, activeTokenMetadata)}{" "}
+                ({amountRuleLabel(condition.condition.amountRule)})
               </dd>
+            </div>
+            <div>
+              <dt>Raw amount</dt>
+              <dd>{condition.condition.amount} units</dd>
             </div>
             {verification?.transactionHash && (
               <div>
-                <dt>Transaction</dt>
+                <dt>Transaction hash</dt>
                 <dd className="dash-mono">{verification.transactionHash}</dd>
               </div>
             )}
@@ -337,17 +420,6 @@ export function AgreementConditionPanel({
               </dl>
             </details>
           )}
-          <ol className="verification-pipeline condition-stages">
-            {conditionVerificationStages(detail, verification).map((stage) => (
-              <li className={stage.tone} key={stage.label}>
-                <span>{stage.index}</span>
-                <div>
-                  <strong>{stage.label}</strong>
-                  <p>{stage.status}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
           <details className="technical-details">
             <summary>Technical details</summary>
             <dl>
@@ -375,7 +447,7 @@ export function AgreementConditionPanel({
               )}
             </dl>
           </details>
-          {verification?.status === "verified" && (
+          {verifiedOnChain && (
             <ul className="condition-checks">
               <li>✓ Transaction included</li>
               <li>✓ Transaction succeeded</li>
@@ -440,12 +512,9 @@ export function verificationProviderLabel(
   details: AgreementConditionDetails,
   verified = false,
 ) {
-  const providers = details.verificationProviders.length
-    ? details.verificationProviders
-    : conditionVerificationProviders;
-  const names =
-    providers.length > 1 ? providers.join(" + ") : providers.join("");
-  return verified ? `Verified by ${names}` : names;
+  return verified
+    ? `Verified by ${verificationProviderName}`
+    : verificationProviderName;
 }
 
 export function isVerifiedOnChain(
@@ -513,12 +582,34 @@ export function conditionSummarySteps(
   verification: AgreementConditionDetails["verification"],
 ) {
   const paymentUnlocked = isEscrowPaymentUnlocked(detail, verification);
-  const withdrawn = hasTimelineEvent(detail, "Withdrawn");
+  const withdrawalAvailable =
+    detail.chain !== undefined &&
+    canWithdrawEscrowFunds(
+      "seller",
+      detail.chain.state,
+      detail.chain.withdrawalAmount,
+    );
   return [
     {
-      label: "Transaction submitted",
+      label: "Transaction hash submitted",
       status: verification ? "Complete" : "Current",
       tone: verification ? "complete" : "current",
+    },
+    {
+      label: "Proof requested",
+      status:
+        verification?.status === "verification_in_progress" ||
+        verification?.status === "verified"
+          ? "Complete"
+          : verification?.status === "verification_failed"
+            ? "Failed"
+            : "Current",
+      tone:
+        verification?.status === "verification_failed"
+          ? "failed"
+          : verification
+            ? "complete"
+            : "current",
     },
     {
       label: "Verified on-chain",
@@ -539,107 +630,11 @@ export function conditionSummarySteps(
       tone: paymentUnlocked ? "complete" : "pending",
     },
     {
-      label: "Withdraw",
-      status: withdrawn ? "Complete" : "Pending",
-      tone: withdrawn ? "complete" : "pending",
+      label: "Seller withdrawal available",
+      status: withdrawalAvailable ? "Available" : "Not available",
+      tone: withdrawalAvailable ? "complete" : "pending",
     },
   ];
-}
-
-export function conditionVerificationStages(
-  detail: AgreementDetails,
-  verification: AgreementConditionDetails["verification"],
-) {
-  const verified = verification?.status === "verified";
-  const verifiedOnChain = isVerifiedOnChain(detail, verification);
-  const paymentUnlocked = isEscrowPaymentUnlocked(detail, verification);
-  const withdrawalAvailable =
-    detail.role === "seller" &&
-    detail.chain !== undefined &&
-    canWithdrawEscrowFunds(
-      detail.role,
-      detail.chain.state,
-      detail.chain.withdrawalAmount,
-    );
-  const withdrawn = hasTimelineEvent(detail, "Withdrawn");
-  return [
-    stage(
-      1,
-      "Transaction hash submitted",
-      verification ? "Complete" : "Waiting for seller",
-      verification ? "complete" : "current",
-    ),
-    stage(
-      2,
-      "Proof requested",
-      verification ? "Complete" : "Not started",
-      verification ? "complete" : "pending",
-    ),
-    stage(
-      3,
-      "Proof unavailable or pending",
-      verification?.status === "verification_failed" &&
-        verification.failureCode === "PROOF_UNAVAILABLE"
-        ? "Proof unavailable"
-        : verification?.status === "verification_failed"
-          ? "Verification failed"
-          : verification
-            ? "Waiting for provider proof"
-            : "Not started",
-      verification?.status === "verification_failed"
-        ? "failed"
-        : verification
-          ? "current"
-          : "pending",
-    ),
-    stage(
-      4,
-      "Proof received",
-      verified ? "Complete" : "Not received yet",
-      verified ? "complete" : "pending",
-    ),
-    stage(
-      5,
-      "Proof validated",
-      verified ? "Complete" : "Not validated yet",
-      verified ? "complete" : "pending",
-    ),
-    stage(
-      6,
-      "Authorized claim submitted",
-      verifiedOnChain ? "Complete" : "Not submitted",
-      verifiedOnChain ? "complete" : "pending",
-    ),
-    stage(
-      7,
-      "Escrow payment unlocked",
-      paymentUnlocked
-        ? "Complete"
-        : externalPaymentStatus(detail, verification).label,
-      paymentUnlocked ? "complete" : "pending",
-    ),
-    stage(
-      8,
-      "Seller withdrawal available",
-      withdrawalAvailable ? "Available" : "Not available",
-      withdrawalAvailable ? "complete" : "pending",
-    ),
-    stage(
-      9,
-      "Seller withdrawn",
-      withdrawn ? "Complete" : "Pending",
-      withdrawn ? "complete" : "pending",
-    ),
-  ];
-}
-
-function stage(
-  index: number,
-  label: string,
-  status: string,
-  tone: "complete" | "current" | "pending" | "failed",
-) {
-  return { index, label, status, tone };
 }
 
 function isEscrowPaymentUnlocked(
@@ -660,6 +655,44 @@ function hasTimelineEvent(detail: AgreementDetails, name: string) {
   return detail.timeline.some((event) => event.name === name);
 }
 
+function tokenMetadataFallback(address: string): TokenMetadata | undefined {
+  return tokenMetadataFallbacks[address.toLowerCase()];
+}
+
+async function resolveTokenMetadata(
+  address: string,
+  provider: BrowserProvider,
+): Promise<TokenMetadata | undefined> {
+  const fallback = tokenMetadataFallback(address);
+  try {
+    const token = new Contract(
+      address,
+      [
+        "function symbol() view returns (string)",
+        "function decimals() view returns (uint8)",
+      ],
+      provider,
+    );
+    const [symbolResult, decimalsResult] = await Promise.all([
+      token.symbol?.(),
+      token.decimals?.(),
+    ]);
+    const symbol = String(symbolResult).trim();
+    const decimals = Number(decimalsResult);
+    const normalizedSymbol = String(symbol).trim();
+    const normalizedDecimals = Number(decimals);
+    if (!normalizedSymbol || !Number.isInteger(normalizedDecimals))
+      return fallback;
+    return { symbol: normalizedSymbol, decimals: normalizedDecimals };
+  } catch {
+    return fallback;
+  }
+}
+
+function shortAddress(address: string) {
+  return `${address.slice(0, 10)}...${address.slice(-8)}`;
+}
+
 export function hasExternalBlockchainCondition(detail: AgreementDetails) {
   return (
     externalBlockchainConditionFromPolicy(detail.metadata.policy) !== undefined
@@ -667,22 +700,30 @@ export function hasExternalBlockchainCondition(detail: AgreementDetails) {
 }
 
 function sourceChainLabel(sourceChainKey: number) {
-  return sourceChainKey === 1
-    ? "Sepolia (key 1 · chain ID 11155111)"
-    : `Chain key ${sourceChainKey}`;
+  return sourceChainKey === 1 ? "Sepolia" : `Chain key ${sourceChainKey}`;
 }
 
-function assetLabel(condition: AgreementConditionDetails["condition"]) {
+function assetLabel(
+  condition: AgreementConditionDetails["condition"],
+  metadata?: TokenMetadata,
+) {
   return condition.assetType === "erc20"
-    ? (condition.tokenContract ?? "ERC-20 token")
+    ? (metadata?.symbol ?? "ERC-20 token")
     : "Native ETH on Sepolia";
 }
 
 function conditionAmountLabel(
   condition: AgreementConditionDetails["condition"],
+  metadata?: TokenMetadata,
 ) {
-  if (condition.assetType !== "native")
-    return `${condition.amount} token units`;
+  if (condition.assetType !== "native") {
+    if (!metadata) return `${condition.amount} units`;
+    try {
+      return `${formatUnits(condition.amount, metadata.decimals)} ${metadata.symbol}`;
+    } catch {
+      return `${condition.amount} units`;
+    }
+  }
   try {
     return `${formatEther(condition.amount)} ETH`;
   } catch {
@@ -699,9 +740,13 @@ function amountRuleLabel(
 export function conditionStatusLabel(
   verification: AgreementConditionDetails["verification"],
   verifying = false,
+  verifiedOnChain = false,
 ) {
   if (verifying) return "Verification in progress";
-  if (verification?.status === "verified") return "Verified on-chain";
+  if (verification?.status === "verified")
+    return verifiedOnChain
+      ? "Verified on-chain"
+      : "Authorized claim pending contract acceptance";
   if (
     verification?.status === "verification_failed" &&
     verification.failureCode === "PROOF_UNAVAILABLE"

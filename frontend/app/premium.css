@@ -317,11 +317,29 @@
 
 .condition-path {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 8px;
   margin: 18px 0;
   padding: 0;
   list-style: none;
+}
+
+.copy-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.copy-field button {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(107, 215, 255, 0.32);
+  border-radius: 7px;
+  background: rgba(23, 104, 229, 0.18);
+  color: #b7e8ff;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
 }
 
 .condition-path li {

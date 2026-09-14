@@ -73,9 +73,13 @@ describe("conditional agreement panels", () => {
   it("hides work evidence when no requirements exist", () => {
     const detail = detailFor({ externalCondition: false });
     expect(hasWorkEvidenceRequirements(detail)).toBe(false);
-    expect(
-      renderToStaticMarkup(<WorkEvidencePanel detail={detail} baseUrl="" />),
-    ).toBe("");
+    const html = renderToStaticMarkup(
+      <WorkEvidencePanel detail={detail} baseUrl="" />,
+    );
+    expect(html).toBe("");
+    expect(html.toLowerCase()).not.toContain("delivery & work evidence");
+    expect(html.toLowerCase()).not.toContain("submit work evidence");
+    expect(html).not.toContain("Proof of transaction");
   });
 
   it("shows only the required work-evidence input when requirements exist", () => {

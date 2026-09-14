@@ -38,6 +38,7 @@ const draft: AgreementDraft = {
     requireTransferEvent: false,
   },
 };
+const sepoliaUsdc = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
 
 class FakeDeployer implements EscrowDeploymentGateway {
   fail = false;
@@ -138,6 +139,44 @@ describe("AgreementCreationService", () => {
       evidencePolicyCommitment: expectedPolicyCommitment,
       agreementCommitment: expectedAgreementCommitment,
     });
+  });
+
+  it("prepares the exact Sepolia USDC blockchain-only draft", async () => {
+    const repository = new InMemoryAgreementRepository();
+    const service = new AgreementCreationService(
+      repository,
+      new FakeDeployer(),
+    );
+    const usdcDraft: AgreementDraft = {
+      ...draft,
+      agreementMode: "blockchain_condition_only",
+      deliverables: [],
+      policy: {
+        ...draft.policy,
+        assetKind: "erc20",
+        expectedSourceContract: sepoliaUsdc,
+        expectedAsset: sepoliaUsdc,
+        expectedRecipient: buyer,
+        expectedSender: seller,
+        amount: "1000000",
+        calldataSelector: "0xa9059cbb",
+        requireTransferEvent: true,
+      },
+    };
+
+    const prepared = await service.prepare(usdcDraft);
+
+    expect(prepared.agreement.agreementMode).toBe("blockchain_condition_only");
+    expect(prepared.agreement.policy).toMatchObject({
+      sourceChainKey: 1,
+      assetKind: "erc20",
+      expectedSourceContract: sepoliaUsdc,
+      expectedAsset: sepoliaUsdc,
+      expectedSender: seller,
+      expectedRecipient: buyer,
+      amount: "1000000",
+    });
+    expect(prepared.agreement.deliverables).toEqual([]);
   });
 
   it("records a sanitized failure without fabricating a deployment", async () => {

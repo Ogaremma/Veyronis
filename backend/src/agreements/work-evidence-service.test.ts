@@ -206,9 +206,22 @@ describe("work evidence service", () => {
       agreementMode: "blockchain_condition_only",
     });
     const submissions = new InMemoryWorkEvidenceRepository();
+    const legacySubmission = await submissions.createSubmission({
+      id: "33333333-3333-4333-8333-333333333333",
+      agreementId,
+      requirementId: requiredRequirementId,
+      submitter: seller,
+      value: "0x" + "1".repeat(64),
+      status: "submitted",
+      submittedAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    });
     const service = new WorkEvidenceService(agreements, submissions);
 
     await expect(service.list(agreementId, buyer)).resolves.toEqual([]);
+    await expect(submissions.listSubmissions(agreementId)).resolves.toEqual([
+      legacySubmission,
+    ]);
     await expect(
       service.submit(agreementId, seller, {
         requirementId: requiredRequirementId,

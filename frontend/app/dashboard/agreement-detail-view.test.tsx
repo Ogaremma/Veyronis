@@ -137,17 +137,27 @@ describe("agreement guidance", () => {
     expect(html).toContain("only after the escrow contract credits the seller");
   });
 
-  it("hides buyer confirmation for blockchain-only agreements but keeps refund protection", () => {
+  it("hides all human settlement controls for blockchain-only agreements", () => {
     const detail = detailFor("buyer", "AwaitingDelivery", "0");
     detail.metadata.policy.evidenceType = id("SOURCE_PAYMENT");
     detail.metadata.deliverables = [];
-    detail.actions = ["requestRefund", "openDispute"];
+    detail.actions = [
+      "confirmDelivery",
+      "requestRefund",
+      "approveRefund",
+      "openDispute",
+      "resolveRelease",
+      "resolveRefund",
+    ];
 
     const html = renderDetail(detail);
 
     expect(html).not.toContain("Confirm delivery");
-    expect(html).toContain("Request refund");
-    expect(html).toContain("Open dispute");
+    expect(html).not.toContain("Request refund");
+    expect(html).not.toContain("Approve refund");
+    expect(html).not.toContain("Open dispute");
+    expect(html).not.toContain("Resolve for seller");
+    expect(html).not.toContain("Resolve for buyer");
   });
 
   it("keeps buyer acceptance and refund actions for work-only agreements", () => {

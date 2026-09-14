@@ -16,18 +16,19 @@ describe("agreement navigation", () => {
     expect(html).toContain(">Home<");
   });
 
-  it("returns to the previous page and main control room", () => {
+  it("returns from agreement detail to the connected wallet dashboard", () => {
     const backRouter = { back: vi.fn(), push: vi.fn() };
     const homeRouter = { back: vi.fn(), push: vi.fn() };
-    navigateAgreementBack(backRouter, { idx: 1 });
+    navigateAgreementBack(backRouter);
     navigateAgreementHome(homeRouter);
-    expect(backRouter.back).toHaveBeenCalledOnce();
+    expect(backRouter.back).not.toHaveBeenCalled();
+    expect(backRouter.push).toHaveBeenCalledWith("/");
     expect(homeRouter.push).toHaveBeenCalledWith("/");
   });
 
-  it("falls back to the main dashboard when there is no useful history", () => {
+  it("never returns to the external wallet connection screen", () => {
     const router = { back: vi.fn(), push: vi.fn() };
-    navigateAgreementBack(router, { idx: 0 });
+    navigateAgreementBack(router);
     expect(router.back).not.toHaveBeenCalled();
     expect(router.push).toHaveBeenCalledWith("/");
   });

@@ -4,6 +4,7 @@ import type { AgreementMetadata } from "@veyronis/shared";
 import {
   InMemoryAgreementRepository,
   SqlAgreementRepository,
+  type TransactionalQueryExecutor,
 } from "./agreement-repository.js";
 
 const record: AgreementMetadata = {
@@ -156,9 +157,76 @@ describe("agreement repositories", () => {
     expect(database.calls[1]?.text).toContain("$1");
     expect(database.calls[1]?.text).not.toContain(record.buyer);
     expect(database.calls[1]?.values).toContain(record.buyer);
+    expect(database.calls[1]?.values[10]).toBe(record.agreementMode);
     expect(database.calls[2]?.text).toContain("agreement_deliverables");
     expect(database.calls[3]?.text).toContain(
       "agreement_evidence_requirements",
+    );
+  });
+
+  it("derives external-only mode for legacy rows without agreement_mode", async () => {
+    const agreementRow = {
+      id: record.id,
+      buyer: record.buyer,
+      seller: record.seller,
+      arbitrator: record.arbitrator,
+      required_amount: "100",
+      agreement_nonce: record.agreementNonce,
+      agreement_commitment: record.agreementCommitment,
+      evidence_policy: record.policy,
+      evidence_policy_commitment: record.evidencePolicyCommitment,
+      evidence_registry: record.evidenceRegistry,
+      deployment_status: "DEPLOYED",
+      escrow_address: record.evidenceRegistry,
+      created_at: new Date(0),
+      updated_at: new Date(0),
+    };
+    const deliverableRow = {
+      id: "11111111-1111-4111-8111-111111111111",
+      agreement_id: record.id,
+      title: "Legacy delivery",
+      description: "",
+      required: true,
+      active: true,
+      position: 0,
+    };
+    const requirementRow = {
+      id: "22222222-2222-4222-8222-222222222222",
+      agreement_id: record.id,
+      deliverable_id: deliverableRow.id,
+      label: "Proof of transaction",
+      kind: "TRANSACTION_HASH",
+      required: true,
+      configuration: {},
+      position: 0,
+    };
+    const executor: TransactionalQueryExecutor = {
+      async connect() {
+        throw new Error("This test does not use transactions");
+      },
+      async query<T>(text: string, _values: readonly unknown[]) {
+        if (text.startsWith("SELECT * FROM agreements WHERE id"))
+          return { rows: [agreementRow] as T[] };
+        if (text.startsWith("SELECT * FROM agreement_deliverables"))
+          return { rows: [deliverableRow] as T[] };
+        if (text.startsWith("SELECT * FROM agreement_evidence_requirements"))
+          return { rows: [requirementRow] as T[] };
+        return { rows: [] as T[] };
+      },
+    };
+    const repository = new SqlAgreementRepository(executor);
+
+    await expect(repository.getAgreementById(record.id)).resolves.toMatchObject(
+      {
+        agreementMode: "blockchain_condition_only",
+        deliverables: [
+          {
+            evidenceRequirements: [
+              { kind: "TRANSACTION_HASH", label: "Proof of transaction" },
+            ],
+          },
+        ],
+      },
     );
   });
 

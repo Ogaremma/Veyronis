@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { getAddress } from "ethers";
+import { ZodError } from "zod";
 import type { AgreementCreationService } from "./agreement-service.js";
 import type { AgreementDashboardService } from "./dashboard-service.js";
 import type { AgreementConditionService } from "./agreement-condition-service.js";
@@ -30,7 +31,8 @@ export function createAgreementHttpHandler(
   },
 ) {
   const creationLimiter = options?.creationLimiter ?? new InMemoryRateLimiter();
-  const confirmationLimiter = options?.confirmationLimiter ?? new InMemoryRateLimiter();
+  const confirmationLimiter =
+    options?.confirmationLimiter ?? new InMemoryRateLimiter();
   const workEvidence = options?.workEvidence;
   const condition = options?.condition;
   return async (
@@ -142,13 +144,25 @@ export function createAgreementHttpHandler(
         const match = request.url?.match(/^\/agreements\/(0x[a-fA-F0-9]{64})$/);
         if (match?.[1]) {
           try {
-            sendJson(response, 200, await options.dashboard.details(match[1], session.address));
+            sendJson(
+              response,
+              200,
+              await options.dashboard.details(match[1], session.address),
+            );
           } catch (error) {
-            if (error instanceof Error && error.message === "Not an agreement participant") {
-              sendJson(response, 403, { error: "Wallet is not an agreement participant" });
+            if (
+              error instanceof Error &&
+              error.message === "Not an agreement participant"
+            ) {
+              sendJson(response, 403, {
+                error: "Wallet is not an agreement participant",
+              });
               return;
             }
-            if (error instanceof Error && error.message === "Agreement not found") {
+            if (
+              error instanceof Error &&
+              error.message === "Agreement not found"
+            ) {
               sendJson(response, 404, { error: "Agreement not found" });
               return;
             }
@@ -161,37 +175,112 @@ export function createAgreementHttpHandler(
         const session = authenticatedSession(request, options?.auth, response);
         if (!session) return;
         const body = (await readJson(request)) as { buyer?: unknown };
-        if (typeof body.buyer !== "string" || getAddress(body.buyer) !== getAddress(session.address)) {
-          sendJson(response, 403, { error: "Authenticated wallet is not the agreement buyer" });
+        if (
+          typeof body.buyer !== "string" ||
+          getAddress(body.buyer) !== getAddress(session.address)
+        ) {
+          sendJson(response, 403, {
+            error: "Authenticated wallet is not the agreement buyer",
+          });
           return;
         }
         if (!creationLimiter.allow(session.address.toLowerCase())) {
-          sendJson(response, 429, { error: "Too many agreement creation requests" });
+          sendJson(response, 429, {
+            error: "Too many agreement creation requests",
+          });
           return;
         }
-        const prepared = await service.prepare(body);
-        sendJson(response, 201, prepared.agreement);
+        try {
+          const prepared = await service.prepare(body);
+          sendJson(response, 201, prepared.agreement);
+        } catch (error) {
+          if (error instanceof ZodError) {
+            sendJson(response, 400, {
+              error:
+                "Invalid agreement draft. Check the mode, policy, participants, and amount.",
+            });
+            return;
+          }
+          if (isMissingAgreementModeColumn(error)) {
+            sendJson(response, 503, {
+              error: "Agreement database schema is not migrated",
+            });
+            return;
+          }
+          sendJson(response, 500, {
+            error: "Agreement service is unavailable",
+          });
+        }
         return;
       }
       if (request.method === "POST" && request.url === "/evidence/verify") {
         const session = authenticatedSession(request, options?.auth, response);
         if (!session) return;
         if (!options?.attestcoinVerifier) {
-          sendJson(response, 503, { ok: false, code: "VERIFIER_UNAVAILABLE", message: "Evidence verifier unavailable" });
+          sendJson(response, 503, {
+            ok: false,
+            code: "VERIFIER_UNAVAILABLE",
+            message: "Evidence verifier unavailable",
+          });
           return;
         }
-        const body = (await readJson(request)) as { escrowAddress?: unknown; transactionHash?: unknown };
-        if (typeof body.escrowAddress !== "string" || typeof body.transactionHash !== "string" || !isHexString(body.transactionHash, 32)) {
-          sendJson(response, 400, { ok: false, code: "INVALID_REQUEST", message: "Valid escrowAddress and transactionHash are required" });
+        const body = (await readJson(request)) as {
+          escrowAddress?: unknown;
+          transactionHash?: unknown;
+        };
+        if (
+          typeof body.escrowAddress !== "string" ||
+          typeof body.transactionHash !== "string" ||
+          !isHexString(body.transactionHash, 32)
+        ) {
+          sendJson(response, 400, {
+            ok: false,
+            code: "INVALID_REQUEST",
+            message: "Valid escrowAddress and transactionHash are required",
+          });
           return;
         }
         let escrowAddress: string;
-        try { escrowAddress = getAddress(body.escrowAddress); } catch { sendJson(response, 400, { ok: false, code: "INVALID_REQUEST", message: "Invalid escrow address" }); return; }
-        const agreement = await service.getAgreementByEscrowAddress(escrowAddress);
-        if (!agreement || !agreement.escrowAddress) { sendJson(response, 404, { ok: false, code: "AGREEMENT_NOT_FOUND", message: "Agreement not found" }); return; }
-        const participant = [agreement.buyer, agreement.seller, agreement.arbitrator].some((a) => getAddress(a) === getAddress(session.address));
-        if (!participant) { sendJson(response, 403, { ok: false, code: "FORBIDDEN", message: "Wallet is not an agreement participant" }); return; }
-        const evidenceCommitment = computeEvidenceCommitment(agreement.evidencePolicyCommitment, agreement.policy.evidenceType, agreement.policy.sourceChainKey, body.transactionHash, agreement.policy.expectedSender);
+        try {
+          escrowAddress = getAddress(body.escrowAddress);
+        } catch {
+          sendJson(response, 400, {
+            ok: false,
+            code: "INVALID_REQUEST",
+            message: "Invalid escrow address",
+          });
+          return;
+        }
+        const agreement =
+          await service.getAgreementByEscrowAddress(escrowAddress);
+        if (!agreement || !agreement.escrowAddress) {
+          sendJson(response, 404, {
+            ok: false,
+            code: "AGREEMENT_NOT_FOUND",
+            message: "Agreement not found",
+          });
+          return;
+        }
+        const participant = [
+          agreement.buyer,
+          agreement.seller,
+          agreement.arbitrator,
+        ].some((a) => getAddress(a) === getAddress(session.address));
+        if (!participant) {
+          sendJson(response, 403, {
+            ok: false,
+            code: "FORBIDDEN",
+            message: "Wallet is not an agreement participant",
+          });
+          return;
+        }
+        const evidenceCommitment = computeEvidenceCommitment(
+          agreement.evidencePolicyCommitment,
+          agreement.policy.evidenceType,
+          agreement.policy.sourceChainKey,
+          body.transactionHash,
+          agreement.policy.expectedSender,
+        );
         const result = await options.attestcoinVerifier.verifyAndSubmit({
           escrowAddress,
           agreementCommitment: agreement.agreementCommitment,
@@ -203,8 +292,25 @@ export function createAgreementHttpHandler(
           subject: agreement.policy.expectedSender,
           policy: agreement.policy,
         });
-        if (!result.ok) { sendJson(response, 422, { ok: false, code: result.code, message: result.message }); return; }
-        sendJson(response, 200, { ok: true, claimId: result.claimId, registryTransactionHash: result.transactionHash, evidence: { sourceChainKey: result.claim.sourceChainKey, sourceTransactionHash: result.claim.sourceTransactionHash, subject: result.claim.subject, evidenceType: result.claim.evidenceType } });
+        if (!result.ok) {
+          sendJson(response, 422, {
+            ok: false,
+            code: result.code,
+            message: result.message,
+          });
+          return;
+        }
+        sendJson(response, 200, {
+          ok: true,
+          claimId: result.claimId,
+          registryTransactionHash: result.transactionHash,
+          evidence: {
+            sourceChainKey: result.claim.sourceChainKey,
+            sourceTransactionHash: result.claim.sourceTransactionHash,
+            subject: result.claim.subject,
+            evidenceType: result.claim.evidenceType,
+          },
+        });
         return;
       }
       const conditionVerification = request.url?.match(
@@ -270,11 +376,15 @@ export function createAgreementHttpHandler(
         const agreement = await service.getAgreement(confirmation[1]);
         if (!agreement) throw new Error("Agreement metadata not found");
         if (getAddress(agreement.buyer) !== getAddress(session.address)) {
-          sendJson(response, 403, { error: "Authenticated wallet is not the agreement buyer" });
+          sendJson(response, 403, {
+            error: "Authenticated wallet is not the agreement buyer",
+          });
           return;
         }
         if (!confirmationLimiter.allow(session.address.toLowerCase())) {
-          sendJson(response, 429, { error: "Too many agreement confirmation requests" });
+          sendJson(response, 429, {
+            error: "Too many agreement confirmation requests",
+          });
           return;
         }
         sendJson(
@@ -289,6 +399,16 @@ export function createAgreementHttpHandler(
       sendJson(response, 400, { error: "Agreement request rejected" });
     }
   };
+}
+
+function isMissingAgreementModeColumn(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const databaseError = error as { code?: unknown; message?: unknown };
+  return (
+    databaseError.code === "42703" ||
+    (typeof databaseError.message === "string" &&
+      databaseError.message.includes('column "agreement_mode" does not exist'))
+  );
 }
 
 async function sendWorkEvidenceResult(
@@ -334,13 +454,19 @@ function authenticatedSession(
   auth: WalletAuthService | undefined,
   response: ServerResponse,
 ) {
-  const session = auth?.readSession(readCookie(request.headers.cookie, "veyronis_session"));
-  if (!session) sendJson(response, 401, { error: "Wallet authentication required" });
+  const session = auth?.readSession(
+    readCookie(request.headers.cookie, "veyronis_session"),
+  );
+  if (!session)
+    sendJson(response, 401, { error: "Wallet authentication required" });
   return session;
 }
 
 export class InMemoryRateLimiter {
-  private readonly entries = new Map<string, { count: number; resetAt: number }>();
+  private readonly entries = new Map<
+    string,
+    { count: number; resetAt: number }
+  >();
 
   constructor(
     private readonly limit = 20,
@@ -353,7 +479,8 @@ export class InMemoryRateLimiter {
     this.prune();
     const current = this.entries.get(key);
     if (!current) {
-      if (this.entries.size >= this.maxKeys) this.entries.delete(this.entries.keys().next().value!);
+      if (this.entries.size >= this.maxKeys)
+        this.entries.delete(this.entries.keys().next().value!);
       this.entries.set(key, { count: 1, resetAt: this.now() + this.windowMs });
       return true;
     }
@@ -372,7 +499,8 @@ export class InMemoryRateLimiter {
 
   private prune(): void {
     const now = this.now();
-    for (const [key, entry] of this.entries) if (entry.resetAt <= now) this.entries.delete(key);
+    for (const [key, entry] of this.entries)
+      if (entry.resetAt <= now) this.entries.delete(key);
   }
 }
 

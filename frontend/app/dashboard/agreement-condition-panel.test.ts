@@ -6,7 +6,6 @@ import type {
 import {
   canSubmitCondition,
   conditionSummarySteps,
-  conditionVerificationStages,
   externalPaymentStatus,
   conditionStatusLabel,
   failureLabel,
@@ -34,6 +33,9 @@ describe("agreement condition panel", () => {
       conditionStatusLabel(verification("verification_in_progress"), true),
     ).toBe("Verification in progress");
     expect(conditionStatusLabel(verification("verified"))).toBe(
+      "Authorized claim pending contract acceptance",
+    );
+    expect(conditionStatusLabel(verification("verified"), false, true)).toBe(
       "Verified on-chain",
     );
     expect(
@@ -116,7 +118,7 @@ describe("agreement condition panel", () => {
         failureCode: "PROOF_UNAVAILABLE",
       }).label,
     ).toBe("Locked — proof unavailable");
-    expect(conditionSummarySteps(detail, undefined)[2]).toMatchObject({
+    expect(conditionSummarySteps(detail, undefined)[3]).toMatchObject({
       label: "Payment unlocked",
       status: "Pending",
     });
@@ -161,31 +163,27 @@ describe("agreement condition panel", () => {
     );
   });
 
-  it("renders one current condition status and the nine verification states", () => {
+  it("renders the five professional condition progression states", () => {
     const detail = blockchainOnlyDetail(
       "AwaitingDelivery",
       "0x" + "0".repeat(64),
       "0",
     );
-    const stages = conditionVerificationStages(
+    const stages = conditionSummarySteps(
       detail,
       verification("verification_in_progress"),
     );
 
-    expect(stages).toHaveLength(9);
+    expect(stages).toHaveLength(5);
     expect(
       stages.filter((stage) => stage.label === "Transaction hash submitted"),
     ).toHaveLength(1);
     expect(stages.map((stage) => stage.label)).toEqual([
       "Transaction hash submitted",
       "Proof requested",
-      "Proof unavailable or pending",
-      "Proof received",
-      "Proof validated",
-      "Authorized claim submitted",
-      "Escrow payment unlocked",
+      "Verified on-chain",
+      "Payment unlocked",
       "Seller withdrawal available",
-      "Seller withdrawn",
     ]);
   });
 
@@ -198,7 +196,7 @@ describe("agreement condition panel", () => {
         },
         true,
       ),
-    ).toBe("Verified by Attestcoin + Creditcoin");
+    ).toBe("Verified by Attestcoin Protocol on Creditcoin");
     expect(
       verificationProviderLabel(
         {
@@ -207,7 +205,7 @@ describe("agreement condition panel", () => {
         },
         true,
       ),
-    ).toBe("Verified by Attestcoin");
+    ).toBe("Verified by Attestcoin Protocol on Creditcoin");
   });
 });
 

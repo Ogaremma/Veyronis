@@ -44,6 +44,7 @@ const draft: AgreementDraft = {
   agreementMode: "blockchain_condition_only",
   policy,
 };
+const sepoliaUsdc = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
 const deliverable: AgreementDeliverable = {
   id: "11111111-1111-4111-8111-111111111111",
   title: "Deliverable",
@@ -169,6 +170,43 @@ describe("canonical agreement commitments", () => {
 
   it("supports blockchain-only creation without work deliverables", () => {
     expect(() => validateAgreementDraft(draft)).not.toThrow();
+  });
+
+  it("validates the production Sepolia USDC external-only draft exactly", () => {
+    const usdcDraft: AgreementDraft = {
+      ...draft,
+      agreementMode: "blockchain_condition_only",
+      deliverables: [],
+      policy: {
+        version: 1,
+        evidenceType: id("SOURCE_PAYMENT"),
+        sourceChainKey: 1,
+        assetKind: "erc20",
+        expectedSourceContract: sepoliaUsdc,
+        expectedRecipient: buyer,
+        expectedAsset: sepoliaUsdc,
+        expectedSender: seller,
+        amountRule: "exact",
+        amount: "1000000",
+        minSourceBlock: "0",
+        maxSourceBlock: "0",
+        calldataSelector: "0xa9059cbb",
+        requireTransferEvent: true,
+      },
+    };
+
+    expect(validateAgreementDraft(usdcDraft)).toEqual(usdcDraft);
+    expect(
+      externalBlockchainConditionFromPolicy(usdcDraft.policy),
+    ).toMatchObject({
+      sourceChainKey: 1,
+      assetType: "erc20",
+      tokenContract: sepoliaUsdc,
+      expectedSender: seller,
+      expectedRecipient: buyer,
+      amount: "1000000",
+      amountRule: "exact",
+    });
   });
 
   it("rejects unnecessary work deliverables for blockchain-only creation", () => {

@@ -64,10 +64,14 @@ export function AgreementDetailView({
   );
   const lifecycle = agreementLifecycleMode(detail.metadata);
   const visibleActions = detail.actions.filter((action) => {
-    if (
-      lifecycle === "blockchain_condition_only" &&
-      action === "confirmDelivery"
-    ) {
+    const humanSettlementAction =
+      action === "confirmDelivery" ||
+      action === "requestRefund" ||
+      action === "approveRefund" ||
+      action === "openDispute" ||
+      action === "resolveRelease" ||
+      action === "resolveRefund";
+    if (lifecycle === "blockchain_condition_only" && humanSettlementAction) {
       return false;
     }
     return action !== "withdraw" || withdrawable;

@@ -455,7 +455,10 @@ export function hasApplicationEvidenceRequirements(
 ): boolean {
   return (metadata.deliverables ?? []).some(
     (deliverable) =>
-      deliverable.active && deliverable.evidenceRequirements.length > 0,
+      deliverable.active &&
+      deliverable.evidenceRequirements.some(
+        (requirement) => requirement.kind !== "TRANSACTION_HASH",
+      ),
   );
 }
 

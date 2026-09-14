@@ -567,6 +567,30 @@ describe("agreement HTTP authorization", () => {
     expect(service.confirmAndDeploy).not.toHaveBeenCalled();
   });
 
+  it("reports a missing agreement-mode database column as a service outage", async () => {
+    const { auth, service, url } = await setup();
+    const cookie = await sessionCookie(auth, buyer);
+    service.prepare.mockRejectedValueOnce(
+      Object.assign(
+        new Error(
+          'column "agreement_mode" of relation "agreements" does not exist',
+        ),
+        { code: "42703" },
+      ),
+    );
+
+    const response = await fetch(`${url}/agreements`, {
+      method: "POST",
+      headers: { cookie },
+      body: JSON.stringify(draft),
+    });
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: "Agreement database schema is not migrated",
+    });
+  });
+
   it("allows the authenticated buyer into existing service flows", async () => {
     const { auth, service, url } = await setup();
     const cookie = await sessionCookie(auth, buyer);

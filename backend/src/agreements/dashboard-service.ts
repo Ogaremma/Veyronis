@@ -75,18 +75,22 @@ export class AgreementDashboardService {
       await this.repository.listAgreementsForParticipant(address);
     return Promise.all(
       agreements.map(async (metadata) => {
+        const exposedMetadata = metadataForParticipant(metadata);
         const role = roleFor(metadata, address);
-        if (!metadata.escrowAddress) return { metadata, role };
+        if (!metadata.escrowAddress) return { metadata: exposedMetadata, role };
         try {
-          const result = await this.reconciliation.reconcile(metadata, address);
+          const result = await this.reconciliation.reconcile(
+            exposedMetadata,
+            address,
+          );
           await this.repository.recordReconciliation({
             agreementId: metadata.id,
             ...result.reconciliation,
           });
-          return { metadata, role, chain: result.snapshot };
+          return { metadata: exposedMetadata, role, chain: result.snapshot };
         } catch {
           return {
-            metadata,
+            metadata: exposedMetadata,
             role,
             chain: await this.reader.readSnapshot(
               metadata.escrowAddress,
@@ -99,7 +103,10 @@ export class AgreementDashboardService {
   }
   async details(id: string, addressInput: string): Promise<AgreementDetails> {
     const address = getAddress(addressInput);
-    const metadata = await this.repository.getAgreementById(id);
+    const storedMetadata = await this.repository.getAgreementById(id);
+    const metadata = storedMetadata
+      ? metadataForParticipant(storedMetadata)
+      : undefined;
     if (!metadata) throw new Error("Agreement not found");
     const role = roleFor(metadata, address);
     if (!metadata.escrowAddress)
@@ -152,6 +159,16 @@ function roleFor(
     if (getAddress(agreement[role]) === address) return role;
   throw new Error("Not an agreement participant");
 }
+
+function metadataForParticipant(
+  metadata: AgreementMetadata,
+): AgreementMetadata {
+  if (agreementLifecycleMode(metadata) !== "blockchain_condition_only")
+    return metadata;
+  if (!metadata.deliverables) return metadata;
+  return { ...metadata, deliverables: [] };
+}
+
 export function actionsFor(
   role: ParticipantRole,
   state: EscrowState,
@@ -159,11 +176,17 @@ export function actionsFor(
   lifecycle: AgreementLifecycleMode = "application_work_evidence",
 ): AgreementAction[] {
   const actions: AgreementAction[] = [];
+  if (lifecycle === "blockchain_condition_only") {
+    if (role === "buyer" && state === "AwaitingPayment")
+      actions.push("deposit", "cancel");
+    if (canWithdrawEscrowFunds(role, state, withdrawal))
+      actions.push("withdraw");
+    return actions;
+  }
   if (role === "buyer" && state === "AwaitingPayment")
     actions.push("deposit", "cancel");
   if (role === "buyer" && state === "AwaitingDelivery") {
-    if (lifecycle !== "blockchain_condition_only")
-      actions.push("confirmDelivery");
+    actions.push("confirmDelivery");
     actions.push("requestRefund");
     actions.push("openDispute");
   }

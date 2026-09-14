@@ -3,6 +3,7 @@ import type {
   AgreementMetadata,
   DeploymentStatus,
 } from "@veyronis/shared";
+import { agreementLifecycleMode } from "@veyronis/shared";
 
 export interface AgreementRepository {
   createAgreement(agreement: AgreementMetadata): Promise<void>;
@@ -277,7 +278,7 @@ export class SqlAgreementRepository implements AgreementRepository {
   }
 
   private async withDeliverables(
-    agreement: AgreementMetadata,
+    agreement: AgreementMetadataWithOptionalMode,
   ): Promise<AgreementMetadata> {
     const deliverableResult = await this.database.query<
       Record<string, unknown>
@@ -285,7 +286,6 @@ export class SqlAgreementRepository implements AgreementRepository {
       "SELECT * FROM agreement_deliverables WHERE agreement_id = $1 ORDER BY position, id",
       [agreement.id],
     );
-    if (deliverableResult.rows.length === 0) return agreement;
     const requirementResult = await this.database.query<
       Record<string, unknown>
     >(
@@ -310,18 +310,21 @@ export class SqlAgreementRepository implements AgreementRepository {
       });
       requirementsByDeliverable.set(deliverableId, requirements);
     }
+    const deliverables = deliverableResult.rows.map((row) => ({
+      id: String(row.id),
+      title: String(row.title),
+      description: String(row.description ?? ""),
+      required: Boolean(row.required),
+      active: Boolean(row.active),
+      position: Number(row.position),
+      evidenceRequirements: requirementsByDeliverable.get(String(row.id)) ?? [],
+    }));
     return {
       ...agreement,
-      deliverables: deliverableResult.rows.map((row) => ({
-        id: String(row.id),
-        title: String(row.title),
-        description: String(row.description ?? ""),
-        required: Boolean(row.required),
-        active: Boolean(row.active),
-        position: Number(row.position),
-        evidenceRequirements:
-          requirementsByDeliverable.get(String(row.id)) ?? [],
-      })),
+      deliverables,
+      agreementMode:
+        agreement.agreementMode ??
+        agreementLifecycleMode({ ...agreement, deliverables }),
     };
   }
 
@@ -347,7 +350,9 @@ export class SqlAgreementRepository implements AgreementRepository {
   }
 }
 
-function mapRow(row: Record<string, unknown>): AgreementMetadata {
+function mapRow(
+  row: Record<string, unknown>,
+): AgreementMetadataWithOptionalMode {
   return {
     id: String(row.id),
     buyer: String(row.buyer),
@@ -358,8 +363,12 @@ function mapRow(row: Record<string, unknown>): AgreementMetadata {
     agreementCommitment: String(row.agreement_commitment),
     evidencePolicyCommitment: String(row.evidence_policy_commitment),
     evidenceRegistry: String(row.evidence_registry),
-    agreementMode: (row.agreement_mode ??
-      "application_work_evidence") as AgreementMetadata["agreementMode"],
+    ...(row.agreement_mode
+      ? {
+          agreementMode:
+            row.agreement_mode as AgreementMetadata["agreementMode"],
+        }
+      : {}),
     policy: row.evidence_policy as AgreementMetadata["policy"],
     deploymentStatus:
       row.deployment_status as AgreementMetadata["deploymentStatus"],
@@ -374,3 +383,10 @@ function mapRow(row: Record<string, unknown>): AgreementMetadata {
 
 const optionalString = (value: unknown) =>
   value == null ? undefined : String(value);
+
+type AgreementMetadataWithOptionalMode = Omit<
+  AgreementMetadata,
+  "agreementMode"
+> & {
+  agreementMode?: AgreementMetadata["agreementMode"];
+};
