@@ -35,6 +35,7 @@ function mockEscrowContract(options: {
   deposited?: bigint[];
   required?: bigint[];
   deposit?: () => Promise<unknown>;
+  chainId?: bigint;
 }) {
   const functions = {
     state: vi.fn(),
@@ -61,7 +62,7 @@ function mockEscrowContract(options: {
   vi.mocked(BrowserProvider).mockImplementation(() => ({
     getSigner: async () => ({ getAddress: async () => buyer }),
     getBalance: async () => 200n,
-    getNetwork: async () => ({ chainId: 11155111n }),
+    getNetwork: async () => ({ chainId: options.chainId ?? 11155111n }),
   }) as never);
   return functions;
 }
@@ -87,7 +88,7 @@ describe("escrow funding guards", () => {
   it("blocks funding on the wrong wallet chain before constructing a transaction", async () => {
     vi.stubEnv("NEXT_PUBLIC_CHAIN_ID", "11155111");
     vi.stubEnv("NEXT_PUBLIC_LOCAL_DEVELOPMENT", "false");
-    mockEscrowContract({ states: [], deposited: [], required: [] });
+    mockEscrowContract({ states: [], deposited: [], required: [], chainId: 31337n });
 
     await expect(fundEscrow({
       getProvider: async () => ({}),
@@ -146,6 +147,23 @@ describe("escrow funding transaction", () => {
       "COMPLETE",
     ]);
     expect(receipt).toMatchObject({ status: "COMPLETE", hash: "0xabc", blockNumber: "12" });
+  });
+
+  it("uses the live provider chain when the Wagmi chain is stale", async () => {
+    vi.stubEnv("NEXT_PUBLIC_CHAIN_ID", "11155111");
+    vi.stubEnv("NEXT_PUBLIC_LOCAL_DEVELOPMENT", "false");
+    const contract = mockEscrowContract({});
+
+    const receipt = await fundEscrow({
+      getProvider: async () => ({}),
+      walletAddress: buyer,
+      walletChainId: 31337,
+      details: fundingDetails(),
+      reconcile: async () => fundingDetails("AwaitingDelivery", "100"),
+    });
+
+    expect(receipt.status).toBe("COMPLETE");
+    expect(contract.deposit).toHaveBeenCalledWith({ value: 100n });
   });
 
   it("reports a wallet rejection without retrying", async () => {

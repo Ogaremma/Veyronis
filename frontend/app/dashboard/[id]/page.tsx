@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { BrowserProvider, Contract, ZeroHash, getAddress } from "ethers";
+import { Contract, ZeroHash, getAddress } from "ethers";
 import { useAccount } from "wagmi";
 import type {
   AgreementAction,
@@ -24,6 +24,7 @@ import { executeWalletTransaction } from "../../transaction-executor";
 import { fundEscrow } from "../../escrow/escrow-funding";
 import { explorerTransactionUrl } from "../../network-config";
 import {
+  activeWalletChainId,
   requiredTransactionChainId,
   transactionNetworkError,
 } from "../../transaction-network-guard";
@@ -96,22 +97,14 @@ export default function AgreementDetailsPage() {
 
   async function execute(action: AgreementAction) {
     setError("");
-    const networkError = transactionNetworkError(
-      chainId,
-      requiredTransactionChainId(),
-    );
-    if (networkError) {
-      setError(networkError);
-      return;
-    }
     if (!detail?.chain) {
       setError("A deployed escrow is required before using this action.");
       return;
     }
-    const walletProvider = await connector?.getProvider();
-    if (!walletProvider) {
-      setError("Wallet/provider unavailable. Connect the authenticated participant wallet first.");
-      setTransaction({ status: "RPC_ERROR", error: "Wallet/provider unavailable." });
+    const { provider, walletProvider, chainId: liveChainId } = await activeWalletChainId(connector);
+    const networkError = transactionNetworkError(liveChainId, requiredTransactionChainId());
+    if (networkError) {
+      setError(networkError);
       return;
     }
     if (action === "deposit") {
@@ -125,7 +118,6 @@ export default function AgreementDetailsPage() {
       });
       return;
     }
-    const provider = new BrowserProvider(walletProvider as never);
     const signer = await provider.getSigner();
     const signerAddress = getAddress(await signer.getAddress());
     const expected = getAddress(

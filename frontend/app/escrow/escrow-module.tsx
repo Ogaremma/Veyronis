@@ -20,6 +20,7 @@ import {
 } from "@veyronis/shared";
 import { HttpAgreementCreationClient } from "../agreement-client";
 import {
+  activeWalletChainId,
   requiredTransactionChainId,
   transactionNetworkError,
 } from "../transaction-network-guard";
@@ -471,8 +472,15 @@ function EscrowWizard({
     setStep(nextWizardStep(step, form.conditionMode));
   }
   async function deployAndFund() {
+    let liveProvider: Awaited<ReturnType<typeof activeWalletChainId>>;
+    try {
+      liveProvider = await activeWalletChainId(connector);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+      return;
+    }
     const networkError = transactionNetworkError(
-      chainId,
+      liveProvider.chainId,
       requiredTransactionChainId(),
     );
     if (networkError) {
@@ -504,7 +512,7 @@ function EscrowWizard({
             getProvider: async () => {
               if (!connector)
                 throw new Error("Connect the agreement buyer wallet first.");
-              return connector.getProvider();
+              return liveProvider.walletProvider;
             },
             walletAddress,
             walletChainId: chainId,

@@ -71,20 +71,14 @@ export async function fundEscrow(input: {
   const signer = await provider.getSigner();
   const signerAddress = await signer.getAddress();
   const balance = await provider.getBalance(signerAddress);
+  const network = await provider.getNetwork();
   const validationError = validateEscrowFunding({
     walletAddress: signerAddress,
-    walletChainId: input.walletChainId,
+    walletChainId: Number(network.chainId),
     details: input.details,
     balance,
   });
   if (validationError) throw new Error(validationError);
-
-  const network = await provider.getNetwork();
-  const providerNetworkError = transactionNetworkError(
-    Number(network.chainId),
-    requiredTransactionChainId(),
-  );
-  if (providerNetworkError) throw new Error(providerNetworkError);
 
   const contract = new Contract(
     input.details.chain!.escrowAddress,
