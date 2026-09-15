@@ -406,7 +406,7 @@ function actionLabel(
   withdrawal: string,
 ) {
   if (action === "deposit")
-    return `Fund Contract ? ${formatEther(required)} ETH`;
+    return `Fund Contract · ${formatEther(required)} ETH`;
   if (action === "withdraw") return `Withdraw ${formatEther(withdrawal)} ETH`;
   return labels[action];
 }

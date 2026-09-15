@@ -48,7 +48,7 @@ declare global {
 export default function AgreementDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { address, chainId } = useAccount();
+  const { address, chainId, connector } = useAccount();
   const [detail, setDetail] = useState<AgreementDetails>();
   const [workEvidenceSubmissions, setWorkEvidenceSubmissions] = useState<
     WorkEvidenceSubmission[]
@@ -104,13 +104,19 @@ export default function AgreementDetailsPage() {
       setError(networkError);
       return;
     }
-    if (!window.ethereum || !detail?.chain) {
-      setError("Connect the authenticated participant wallet first.");
+    if (!detail?.chain) {
+      setError("A deployed escrow is required before using this action.");
+      return;
+    }
+    const walletProvider = await connector?.getProvider();
+    if (!walletProvider) {
+      setError("Wallet/provider unavailable. Connect the authenticated participant wallet first.");
+      setTransaction({ status: "RPC_ERROR", error: "Wallet/provider unavailable." });
       return;
     }
     if (action === "deposit") {
       await fundEscrow({
-        getProvider: async () => window.ethereum,
+        getProvider: async () => walletProvider,
         walletAddress: address,
         walletChainId: chainId,
         details: detail,
@@ -119,7 +125,7 @@ export default function AgreementDetailsPage() {
       });
       return;
     }
-    const provider = new BrowserProvider(window.ethereum as never);
+    const provider = new BrowserProvider(walletProvider as never);
     const signer = await provider.getSigner();
     const signerAddress = getAddress(await signer.getAddress());
     const expected = getAddress(
@@ -161,6 +167,26 @@ export default function AgreementDetailsPage() {
       setTransaction,
       (hash) => explorerTransactionUrl(network.chainId, hash),
     );
+  }
+
+  function handleActionFailure(reason: unknown) {
+    const original = reason instanceof Error ? reason.message : String(reason);
+    const code = (reason as { code?: string | number })?.code;
+    const lower = original.toLowerCase();
+    const category =
+      code === 4001 || code === "ACTION_REJECTED" || lower.includes("user rejected")
+        ? "MetaMask request rejected"
+        : lower.includes("insufficient funds")
+          ? "Insufficient ETH"
+          : lower.includes("wrong network") || lower.includes("chain")
+            ? "Wrong network"
+            : lower.includes("signer") || lower.includes("account") || lower.includes("buyer")
+              ? "Signer/account mismatch"
+              : lower.includes("provider") || lower.includes("wallet")
+                ? "Wallet/provider unavailable"
+                : "Contract/RPC failure";
+    setTransaction({ status: "RPC_ERROR", error: original });
+    setError(`${category}: ${original}`);
   }
 
   if (error && !detail)
@@ -207,14 +233,14 @@ export default function AgreementDetailsPage() {
       <AgreementDetailView
         detail={detail}
         transaction={transaction}
-        execute={(action) => void execute(action)}
+        execute={(action) => void execute(action).catch(handleActionFailure)}
         workEvidenceSubmissions={workEvidenceSubmissions}
         conditionVerification={conditionVerification}
       />
       <AgreementConditionPanel
         detail={detail}
         baseUrl={API}
-        executeAction={(action) => void execute(action)}
+        executeAction={(action) => void execute(action).catch(handleActionFailure)}
         actionBusy={
           ![
             "IDLE",

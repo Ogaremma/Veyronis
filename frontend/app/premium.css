@@ -7,6 +7,14 @@
   );
 }
 
+/* Agreement detail rhythm */
+.dashboard-shell > .detail-header { margin: 18px 0 28px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+.dashboard-shell > .dash-error { margin: 0 0 22px; }
+.dashboard-shell .detail-section, .dashboard-shell .dash-panel { margin: 24px 0; }
+.dashboard-shell .detail-section > h2, .dashboard-shell .dash-panel > h2 { margin: 0 0 18px; }
+.dashboard-shell .detail-section > h3, .dashboard-shell .dash-panel > h3 { margin: 22px 0 12px; }
+.dashboard-shell .detail-section + .detail-section, .dashboard-shell .dash-panel + .dash-panel { margin-top: 28px; }
+
 .live-contract-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
