@@ -8,5 +8,5 @@ import { web3Config } from "./web3-config";
 
 export function Web3Provider({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
-  return <WagmiProvider config={web3Config} reconnectOnMount={false}><QueryClientProvider client={queryClient}><RainbowKitProvider>{children}</RainbowKitProvider></QueryClientProvider></WagmiProvider>;
+  return <WagmiProvider config={web3Config}><QueryClientProvider client={queryClient}><RainbowKitProvider>{children}</RainbowKitProvider></QueryClientProvider></WagmiProvider>;
 }

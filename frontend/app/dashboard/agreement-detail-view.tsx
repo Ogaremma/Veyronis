@@ -37,12 +37,14 @@ export function AgreementDetailView({
   detail,
   transaction,
   execute,
+  walletReady = true,
   workEvidenceSubmissions,
   conditionVerification,
 }: {
   detail: AgreementDetails;
   transaction: TransactionReceiptInfo;
   execute: (action: AgreementAction) => void;
+  walletReady?: boolean;
   workEvidenceSubmissions?: readonly WorkEvidenceSubmission[] | undefined;
   conditionVerification?: AgreementConditionVerification | undefined;
 }) {
@@ -210,7 +212,7 @@ export function AgreementDetailView({
             {displayedActions.map((action) => (
               <button
                 className={action === primary ? "dash-primary" : "dash-action"}
-                disabled={busy}
+                disabled={busy || !walletReady}
                 key={action}
                 onClick={() => execute(action)}
               >
@@ -222,6 +224,9 @@ export function AgreementDetailView({
               </button>
             ))}
           </div>
+          {!walletReady && (
+            <p className="dash-muted">Reconnect the participant wallet to continue.</p>
+          )}
           {!primary && (
             <p className="dash-muted">
               Your wallet has no valid action in the current on-chain state.

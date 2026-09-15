@@ -49,7 +49,8 @@ declare global {
 export default function AgreementDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { address, chainId, connector } = useAccount();
+  const { address, chainId, connector, isConnected, isReconnecting } = useAccount();
+  const walletReady = isConnected && Boolean(address && connector) && !isReconnecting;
   const [detail, setDetail] = useState<AgreementDetails>();
   const [workEvidenceSubmissions, setWorkEvidenceSubmissions] = useState<
     WorkEvidenceSubmission[]
@@ -226,6 +227,7 @@ export default function AgreementDetailsPage() {
         detail={detail}
         transaction={transaction}
         execute={(action) => void execute(action).catch(handleActionFailure)}
+        walletReady={walletReady}
         workEvidenceSubmissions={workEvidenceSubmissions}
         conditionVerification={conditionVerification}
       />
@@ -234,6 +236,7 @@ export default function AgreementDetailsPage() {
         baseUrl={API}
         executeAction={(action) => void execute(action).catch(handleActionFailure)}
         actionBusy={
+          !walletReady ||
           ![
             "IDLE",
             "COMPLETE",
