@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Veyronis Project Deck</title>
+<style>
+@page{size:13.333in 7.5in;margin:0}
+*{box-sizing:border-box}html,body{margin:0;padding:0;background:#eef3f8}
+body{font-family:Inter,"Segoe UI",Arial,sans-serif;color:#152238}
+.slide{position:relative;width:13.333in;height:7.5in;page-break-after:always;overflow:hidden;padding:.62in .75in;background:#fff}
+.slide:last-child{page-break-after:auto}
+.eyebrow{color:#2f78d8;font-size:13px;font-weight:800;letter-spacing:2px;text-transform:uppercase}
+h1{margin:12px 0;font-size:62px;line-height:1;letter-spacing:-2px}
+h2{margin:0 0 24px;font-size:38px;line-height:1.08;letter-spacing:-1.2px}
+h3{margin:0 0 8px;font-size:17px}
+p{margin:0 0 15px;font-size:16px;line-height:1.55;color:#485a75}
+ul{margin:0;padding:0;list-style:none}li{position:relative;margin-bottom:12px;padding-left:24px;font-size:16px;line-height:1.5;color:#485a75}
+li:before{content:"";position:absolute;left:0;top:8px;width:9px;height:9px;border-radius:50%;background:#3c8cff}
+strong{color:#152238}code{font-family:Consolas,monospace;font-size:12.5px;color:#20509b;word-break:break-all}
+.cover{background:linear-gradient(135deg,#020817,#061c3d 58%,#04264b);color:#fff;display:flex;flex-direction:column;justify-content:center}
+.cover p{color:#a9c8ea;font-size:20px;max-width:7.4in}.cover .tagline{color:#77b5ff;font-size:17px;font-weight:700}
+.cover-top{position:absolute;top:.65in;left:.75in}.brand{width:86px;height:86px}
+.cover-bottom{position:absolute;bottom:.65in;left:.75in;color:#89a9cb;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}.grid.three{grid-template-columns:repeat(3,1fr)}
+.card{min-height:145px;padding:20px 22px;border:1px solid #d8e3ef;border-radius:14px;background:#f8fbff;box-shadow:0 10px 22px rgba(29,70,125,.06)}
+.dark{background:#091c33;border-color:rgba(112,174,238,.2)}.dark h3,.dark strong{color:#fff}.dark p,.dark li{color:#b9cde5}
+.statement{margin:18px 0 26px;padding:20px 24px;border-left:5px solid #3c8cff;background:#f1f7ff;font-size:18px;line-height:1.55;color:#243b58}
+.pipeline{display:grid;gap:10px;margin:22px 0}.row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.step{padding:14px 15px;border-radius:10px;background:#eef5ff;border:1px solid #cfe0f3;font-size:13.5px;font-weight:700;color:#1d436e}
+.step span{display:block;margin-bottom:4px;color:#658bb3;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px}
+.proof{display:grid;grid-template-columns:1.25fr .75fr;gap:20px}
+.fact{margin-bottom:11px;padding:14px 16px;border-radius:10px;background:#f6faff;border:1px solid #d6e5f5}
+.fact span{display:block;margin-bottom:5px;color:#6383a6;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px}
+.closing{background:linear-gradient(135deg,#020817,#072244 62%,#04315b);color:#fff;display:flex;flex-direction:column;justify-content:center}
+.closing h2,.closing h3,.closing strong{color:#fff}.closing p,.closing li{color:#b6cee8}
+.links{margin-top:18px;padding:20px 24px;border-radius:14px;background:rgba(20,74,132,.34);border:1px solid rgba(120,184,244,.25)}
+.links code{color:#a9d8ff}.footer{position:absolute;right:.75in;bottom:.4in;color:#7b93ab;font-size:11px}.cover .footer{color:#7f9fbd}
+</style>
+</head>
+<body>
+<section class="slide cover">
+<div class="cover-top"><img class="brand" src="../frontend/app/icon.svg" alt="Veyronis logo"></div>
+<div class="eyebrow" style="color:#77b5ff">Hackathon Submission</div>
+<h1>Veyronis</h1>
+<p class="tagline">Cross-chain escrow and dispute resolution using Attestcoin-verified evidence on Creditcoin.</p>
+<p>Veyronis keeps funds self-custodial on Ethereum Sepolia while using Creditcoin-attested source blocks and Attestcoin verification to authorize evidence-based escrow conditions.</p>
+<div class="cover-bottom">Built by Ogar Emma · Ethereum Sepolia · Creditcoin testnet</div>
+<div class="footer">01</div>
+</section>
+<section class="slide">
+<div class="eyebrow">Problem</div>
+<h2>Cross-chain agreements create a trust gap</h2>
+<div class="grid">
+<div class="card"><h3>Proof lives on another chain</h3><p>The obligation may be proven by a Sepolia transaction, while the escrow and payout rules live with a separate agreement contract.</p></div>
+<div class="card"><h3>Traditional escrow cannot verify it</h3><p>An escrow agent can hold funds, but cannot independently authenticate a transaction on another blockchain or validate its context.</p></div>
+<div class="card"><h3>Manual review is fragile</h3><p>Screenshots and pasted hashes can be copied, replayed, taken out of context, or attached to the wrong agreement.</p></div>
+<div class="card"><h3>Intermediaries add friction</h3><p>Marketplaces and centralized custodians introduce custody risk, delays, fees, and opaque dispute decisions.</p></div>
+</div>
+<div class="footer">02</div>
+</section>
+<section class="slide">
+<div class="eyebrow">Solution</div>
+<h2>Self-custodial escrow with verifiable evidence</h2>
+<div class="statement">Veyronis separates custody from verification: the escrow controls funds, while Attestcoin and Creditcoin verify the cross-chain fact that satisfies the agreement condition.</div>
+<div class="grid">
+<div class="card dark"><h3>Buyer-controlled funding</h3><p>A dedicated VeyronisEscrow contract holds the exact required amount on Ethereum Sepolia.</p></div>
+<div class="card dark"><h3>Immutable evidence policies</h3><p>Each agreement commits to expected source chain, transaction context, participants, asset, amount, and evidence rules.</p></div>
+<div class="card dark"><h3>Verified source facts</h3><p>Proof Builder and Creditcoin BlockProver verify transaction inclusion after the source block is attested.</p></div>
+<div class="card dark"><h3>Authorized settlement</h3><p>EvidenceClaimRegistry records the verified claim and authorizes the escrow condition; it does not directly transfer funds.</p></div>
+</div>
+<div class="footer">03</div>
+</section>
+<section class="slide">
+<div class="eyebrow">How It Works</div>
+<h2>From source transaction to seller withdrawal</h2>
+<div class="pipeline">
+<div class="row"><div class="step"><span>Step 01</span>Source transaction</div><div class="step"><span>Step 02</span>Attestcoin validation</div><div class="step"><span>Step 03</span>Creditcoin source-block attestation</div></div>
+<div class="row"><div class="step"><span>Step 04</span>Proof Builder</div><div class="step"><span>Step 05</span>Creditcoin BlockProver</div><div class="step"><span>Step 06</span>Attested transaction decoding</div></div>
+<div class="row"><div class="step"><span>Step 07</span>Evidence-policy validation</div><div class="step"><span>Step 08</span>EvidenceClaimRegistry</div><div class="step"><span>Step 09</span>Escrow condition settlement</div></div>
+<div class="step"><span>Step 10</span>Seller withdrawal</div>
+</div>
+<p>A verified claim satisfies the escrow condition. The escrow then credits the seller's internal withdrawal balance. The seller signs a separate withdrawal transaction; evidence verification never directly pays the wallet.</p>
+<div class="footer">04</div>
+</section>
+<section class="slide">
+<div class="eyebrow">USC / Creditcoin Integration</div>
+<h2>Creditcoin verifies. Sepolia holds custody.</h2>
+<div class="grid">
+<div class="card"><h3>Attestcoin / USC validation</h3><p>Veyronis validates the configured Sepolia source-chain context before requesting proof material.</p></div>
+<div class="card"><h3>Creditcoin source-block attestation</h3><p>The transaction's source block must be attested before Veyronis accepts proof material.</p></div>
+<div class="card"><h3>Proof Builder</h3><p>Proof Builder generates the transaction inclusion proof from the attested source block.</p></div>
+<div class="card"><h3>Creditcoin BlockProver</h3><p>BlockProver verifies transaction inclusion and attested block continuity through the USC SDK.</p></div>
+</div>
+<div class="statement">Creditcoin supplies the verification layer. Escrow funds remain on Ethereum Sepolia in VeyronisEscrow. Attestcoin does not directly transfer escrow funds, and Creditcoin does not hold them.</div>
+<div class="footer">05</div>
+</section>
+<section class="slide">
+<div class="eyebrow">Architecture</div>
+<h2>A separation of custody, metadata, and proof</h2>
+<div class="grid three">
+<div class="card"><h3>Frontend</h3><p>Next.js wallet workflows for agreement creation, funding, verification, disputes, withdrawal, and status.</p></div>
+<div class="card"><h3>Backend</h3><p>Native Node.js/TypeScript service for Attestcoin orchestration, proof coordination, policy checks, API, and reconciliation.</p></div>
+<div class="card"><h3>PostgreSQL</h3><p>Metadata, evidence references, and verification records. Never authoritative for balances or settlement.</p></div>
+<div class="card"><h3>Ethereum Sepolia</h3><p>Chain ID 11155111 hosts VeyronisEscrow and EvidenceClaimRegistry custody and settlement state.</p></div>
+<div class="card"><h3>Creditcoin &amp; Attestcoin</h3><p>Chain ID 102031 provides source-block attestation, Proof Builder integration, and BlockProver verification.</p></div>
+<div class="card dark"><h3>Contract boundary</h3><p>VeyronisEscrow controls custody and withdrawal credits; EvidenceClaimRegistry binds verified evidence to the agreement.</p></div>
+</div>
+<div class="footer">06</div>
+</section>
+<section class="slide">
+<div class="eyebrow">Production Proof</div>
+<h2>Confirmed testnet settlement and withdrawal</h2>
+<div class="proof">
+<div>
+<div class="fact"><span>Successful source transaction</span><code>0xe239b7db437c434e3aca54503b4908cf9c91f0cde386699a490cce4d7f46493e</code></div>
+<div class="fact"><span>Successful escrow</span><code>0x62E251a844b1414cC73Eab91bC8f2Eee8bE9c1eA</code></div>
+<div class="fact"><span>Current attestation test</span><code>0xbd47cd54bc5caf34cce742fcb54ea76921684645f5fec744d6855cbd91d148e6</code></div>
+</div>
+<div class="card dark"><h3>Confirmed result</h3><p>The production escrow reached Complete, credited the seller's internal withdrawal balance, and the seller successfully performed the withdrawal.</p></div>
+</div>
+<p>The current source transaction is valid on Sepolia at block <strong>11706616</strong>. Its source block is awaiting Creditcoin attestation, so Veyronis safely keeps the condition in a retryable waiting state. This is asynchronous attestation handling, not a failed transaction.</p>
+<div class="footer">07</div>
+</section>
+<section class="slide">
+<div class="eyebrow">Use Cases &amp; Future</div>
+<h2>Evidence-based conditional payouts</h2>
+<div class="grid">
+<div class="card"><h3>Cross-chain commerce</h3><p>Release escrow when a payment or delivery condition is independently verified on the source chain.</p></div>
+<div class="card"><h3>Milestone payments</h3><p>Bind each payout to a source-chain event and release only after the committed evidence policy passes.</p></div>
+<div class="card"><h3>Contributor escrow</h3><p>DAOs and protocols can condition contributor payouts on verifiable on-chain milestones.</p></div>
+<div class="card"><h3>Service agreements</h3><p>Use evidence policies for cross-chain service obligations and conditional settlement.</p></div>
+<div class="card"><h3>Dispute resolution</h3><p>Record verified evidence as an advisory input while retaining an arbitrator for subjective judgment.</p></div>
+<div class="card dark"><h3>Prototype direction</h3><p>Future work can broaden supported source events and automate safe retry orchestration without changing custody boundaries.</p></div>
+</div>
+<div class="footer">08</div>
+</section>
+<section class="slide closing">
+<div class="eyebrow" style="color:#77b5ff">Closing</div>
+<h2>Trust the evidence. Keep custody self-custodial.</h2>
+<p>Veyronis connects an obligation on a source blockchain to an escrow condition on Ethereum Sepolia using Attestcoin-verified evidence and Creditcoin source-block attestation. Verified evidence authorizes the condition; a separate seller withdrawal completes the payout.</p>
+<div class="links">
+<h3>Project links</h3>
+<ul>
+<li><strong>Frontend:</strong> <code>https://veyronis-proof.vercel.app/</code></li>
+<li><strong>Backend:</strong> <code>https://veyronis-dtxp.onrender.com/</code></li>
+<li><strong>EvidenceClaimRegistry:</strong> <code>0x8eDA7318A0f01Fe0838e97742F5770E2c4Fd999D</code></li>
+</ul>
+</div>
+<div class="footer">09</div>
+</section>
+</body>
+</html>

@@ -1,14 +1,20 @@
 import { describe, expect, it } from "vitest";
 
+import { NimiqPayError } from "../wallet/nimiq-pay";
 import {
   NIM_SERVICE_FEE_DISCLOSURE,
+  NIM_SERVICE_FEE_GATE_NOTE,
   NIM_SERVICE_FEE_LABEL,
   NIM_SERVICE_FEE_LUNA,
   NIM_SERVICE_FEE_PAYLOAD_MAX_BYTES,
   NIM_SERVICE_FEE_PAYLOAD_PREFIX,
+  canAuthorizeNimServiceFee,
+  canPayNimServiceFee,
   describeNimReference,
   isNimiqAddress,
   nimReferenceShape,
+  nimServiceFeeBlocksContinue,
+  nimServiceFeeMessage,
   nimServiceFeePayload,
   nimServiceFeePayloadBytes,
   normalizeNimiqAddress,
@@ -92,5 +98,98 @@ describe("Nimiq payment reference handling", () => {
 
   it("documents the missing backend verification", () => {
     expect(NIM_SERVICE_FEE_DISCLOSURE).toContain("does not verify");
+    expect(NIM_SERVICE_FEE_DISCLOSURE).toContain("Client-side");
+  });
+});
+
+describe("Nimiq service fee gate", () => {
+  it("never blocks the wizard outside Nimiq Pay", () => {
+    expect(nimServiceFeeBlocksContinue({ host: false, paid: false })).toBe(
+      false,
+    );
+    expect(nimServiceFeeBlocksContinue({ host: false, paid: true })).toBe(
+      false,
+    );
+  });
+
+  it("blocks the wizard inside Nimiq Pay until the fee is paid", () => {
+    expect(nimServiceFeeBlocksContinue({ host: true, paid: false })).toBe(true);
+    expect(nimServiceFeeBlocksContinue({ host: true, paid: true })).toBe(false);
+  });
+
+  it("explains why the wizard is blocked", () => {
+    expect(NIM_SERVICE_FEE_GATE_NOTE).toContain(
+      "Pay the Nimiq Pay service fee",
+    );
+  });
+});
+
+describe("Nimiq service fee authorization", () => {
+  it("requires the host and no in-flight or already paid request", () => {
+    expect(
+      canAuthorizeNimServiceFee({ host: true, pending: false, paid: false }),
+    ).toBe(true);
+    expect(
+      canAuthorizeNimServiceFee({ host: false, pending: false, paid: false }),
+    ).toBe(false);
+    expect(
+      canAuthorizeNimServiceFee({ host: true, pending: true, paid: false }),
+    ).toBe(false);
+    expect(
+      canAuthorizeNimServiceFee({ host: true, pending: false, paid: true }),
+    ).toBe(false);
+  });
+});
+
+describe("Nimiq service fee payment", () => {
+  const ready = {
+    host: true,
+    pending: false,
+    paid: false,
+    authorized: true,
+    recipientValid: true,
+  };
+
+  it("allows a payment when every precondition is met", () => {
+    expect(canPayNimServiceFee(ready)).toBe(true);
+  });
+
+  it("blocks duplicate attempts while pending or already paid", () => {
+    expect(canPayNimServiceFee({ ...ready, pending: true })).toBe(false);
+    expect(canPayNimServiceFee({ ...ready, paid: true })).toBe(false);
+  });
+
+  it("requires the host, an authorized wallet and a valid recipient", () => {
+    expect(canPayNimServiceFee({ ...ready, host: false })).toBe(false);
+    expect(canPayNimServiceFee({ ...ready, authorized: false })).toBe(false);
+    expect(canPayNimServiceFee({ ...ready, recipientValid: false })).toBe(
+      false,
+    );
+  });
+});
+
+describe("Nimiq service fee error messages", () => {
+  it("distinguishes a user rejection from a provider failure", () => {
+    expect(
+      nimServiceFeeMessage(new NimiqPayError("USER_REJECTED", "rejected")),
+    ).toContain("No NIM was sent");
+    expect(
+      nimServiceFeeMessage(new NimiqPayError("PROVIDER_FAILURE", "failed")),
+    ).toBe("failed");
+    expect(
+      nimServiceFeeMessage(new NimiqPayError("INVALID_INPUT", "bad fee")),
+    ).toContain("bad fee");
+    expect(
+      nimServiceFeeMessage(
+        new NimiqPayError("NIMIQ_PAY_UNAVAILABLE", "no host"),
+      ),
+    ).toBe("no host");
+  });
+
+  it("falls back to a safe message for unknown failures", () => {
+    expect(nimServiceFeeMessage("boom")).toBe("The Nimiq Pay request failed.");
+    expect(nimServiceFeeMessage(new Error(""))).toBe(
+      "The Nimiq Pay request failed.",
+    );
   });
 });

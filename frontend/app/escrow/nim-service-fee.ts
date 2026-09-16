@@ -11,7 +11,11 @@
  */
 
 import { formatNim } from "../wallet/nim-amount";
-import { MAX_NIMIQ_DATA_BYTES, nimDataByteLength } from "../wallet/nimiq-pay";
+import {
+  MAX_NIMIQ_DATA_BYTES,
+  NimiqPayError,
+  nimDataByteLength,
+} from "../wallet/nimiq-pay";
 
 /** Fixed demo service fee: 1000 Luna = 0.01 NIM. Integer Luna only. */
 export const NIM_SERVICE_FEE_LUNA = 1000;
@@ -96,4 +100,74 @@ export function describeNimReference(reference: string): string {
 
 /** Disclosed limitation shown in the UI and in the integration doc. */
 export const NIM_SERVICE_FEE_DISCLOSURE =
-  "Demo service fee. The NIM leaves your Nimiq Pay wallet, but Veyronis does not verify or reconcile NIM payments yet, so this payment does not change any agreement state.";
+  "Client-side Nimiq Pay service fee for this submission. Veyronis does not verify or reconcile NIM payments, so this fee gates the flow locally and is never confirmed by the backend.";
+
+/** Explanation shown while the fee still blocks the wizard. */
+export const NIM_SERVICE_FEE_GATE_NOTE =
+  "Pay the Nimiq Pay service fee to continue with this agreement.";
+
+/** Normalizes a host failure into a message that is safe to show a user. */
+export function nimServiceFeeMessage(reason: unknown): string {
+  if (reason instanceof NimiqPayError && reason.code === "USER_REJECTED") {
+    return "You rejected the request in Nimiq Pay. No NIM was sent.";
+  }
+  if (reason instanceof NimiqPayError && reason.code === "INVALID_INPUT") {
+    return `The payment details were rejected before sending: ${reason.message}`;
+  }
+  if (reason instanceof Error && reason.message.length > 0) {
+    return reason.message;
+  }
+  return "The Nimiq Pay request failed.";
+}
+
+export interface NimServiceFeeGateState {
+  readonly host: boolean;
+  readonly paid: boolean;
+}
+
+/**
+ * Inside Nimiq Pay the service fee gates the review step, so the agreement
+ * cannot be created before the fee is paid. Outside Nimiq Pay it never gates
+ * anything and the existing browser escrow flow is unchanged.
+ */
+export function nimServiceFeeBlocksContinue(
+  state: NimServiceFeeGateState,
+): boolean {
+  return state.host && !state.paid;
+}
+
+export interface NimServiceFeeAuthorizationState {
+  readonly host: boolean;
+  readonly pending: boolean;
+  readonly paid: boolean;
+}
+
+/** Authorization needs the host and no in-flight or already paid request. */
+export function canAuthorizeNimServiceFee(
+  state: NimServiceFeeAuthorizationState,
+): boolean {
+  return state.host && !state.pending && !state.paid;
+}
+
+export interface NimServiceFeePaymentState {
+  readonly host: boolean;
+  readonly pending: boolean;
+  readonly paid: boolean;
+  readonly authorized: boolean;
+  readonly recipientValid: boolean;
+}
+
+/**
+ * Payment needs the host, an authorized wallet, a valid recipient and no
+ * in-flight request. The `pending` and `paid` conditions are what prevent
+ * duplicate payment attempts.
+ */
+export function canPayNimServiceFee(state: NimServiceFeePaymentState): boolean {
+  return (
+    state.host &&
+    state.authorized &&
+    state.recipientValid &&
+    !state.pending &&
+    !state.paid
+  );
+}

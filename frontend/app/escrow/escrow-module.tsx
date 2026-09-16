@@ -41,7 +41,9 @@ import {
   type DeployAndFundStage,
 } from "./deploy-and-fund-flow";
 import { fundEscrow } from "./escrow-funding";
+import { NIM_SERVICE_FEE_GATE_NOTE } from "./nim-service-fee";
 import { NimServiceFeePanel } from "./nim-service-fee-panel";
+import { useNimServiceFee } from "./use-nim-service-fee";
 import {
   DeliverablesEditor,
   EvidenceRequirementsEditor,
@@ -365,6 +367,9 @@ function EscrowWizard({
   });
   const update = (name: string, value: string | boolean) =>
     setForm((current) => ({ ...current, [name]: value }));
+  // Nimiq Pay service fee state. It lives here, above the per-step rendering, so
+  // a paid fee survives moving between wizard steps and is never charged twice.
+  const nimFee = useNimServiceFee(form.agreementNonce);
   const draft = useMemo<AgreementDraft>(() => {
     const externalCondition = form.conditionMode !== "work";
     const erc20 = form.assetKind === "erc20";
@@ -470,6 +475,8 @@ function EscrowWizard({
     }
     if (step === 5 && form.conditionMode !== "work" && !preview)
       return setError("Complete the external blockchain condition");
+    if (step === 6 && nimFee.blocksContinue)
+      return setError(NIM_SERVICE_FEE_GATE_NOTE);
     setStep(nextWizardStep(step, form.conditionMode));
   }
   async function deployAndFund() {
@@ -670,9 +677,7 @@ function EscrowWizard({
           {step === 6 && (
             <ReviewStep form={form} draft={draft} preview={preview} />
           )}
-          {step === 6 && (
-            <NimServiceFeePanel agreementNonce={form.agreementNonce} />
-          )}
+          {step === 6 && <NimServiceFeePanel fee={nimFee} />}
           {step === 7 && (
             <div className="deploy-success">
               <span>{"\u2713"}</span>
@@ -715,6 +720,11 @@ function EscrowWizard({
               {error}
             </p>
           )}
+          {step === 6 && nimFee.blocksContinue && (
+            <p className="nim-service-fee-warn" role="status">
+              {NIM_SERVICE_FEE_GATE_NOTE}
+            </p>
+          )}
           <div className="wizard-actions">
             {wizardBackLabel(step, false) && (
               <GlassButton
@@ -734,7 +744,7 @@ function EscrowWizard({
               disabled={
                 step === agreementWizardSteps.length
                   ? deploying || !preview || Boolean(agreementId)
-                  : false
+                  : step === 6 && nimFee.blocksContinue
               }
               onClick={
                 step === agreementWizardSteps.length

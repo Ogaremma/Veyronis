@@ -1,105 +1,29 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React from "react";
 
-import {
-  NimiqPayError,
-  getNimiqAccounts,
-  getNimiqPayReadiness,
-  sendNimPayment,
-} from "../wallet/nimiq-pay";
 import { GlassButton, GlassCard, GlassInput, StatusBadge } from "../ui/glass";
 import {
   NIM_SERVICE_FEE_DISCLOSURE,
   NIM_SERVICE_FEE_LABEL,
   NIM_SERVICE_FEE_LUNA,
   describeNimReference,
-  isNimiqAddress,
-  nimServiceFeePayload,
-  nimServiceFeePayloadBytes,
-  normalizeNimiqAddress,
-  type NimServiceFeeStage,
 } from "./nim-service-fee";
+import type { NimServiceFeeState } from "./use-nim-service-fee";
 
 /**
- * Optional recipient, set through the existing public environment variable
- * mechanism. No address is hard-coded; the field stays editable so the
- * recipient can always be checked before sending.
- */
-const ENV_RECIPIENT = process.env.NEXT_PUBLIC_NIMIQ_SERVICE_FEE_RECIPIENT ?? "";
-
-/**
- * Optional Nimiq Pay service fee shown inside the escrow-creation flow.
+ * Nimiq Pay service fee panel for the escrow wizard review step.
  *
- * It renders only when the app is running inside Nimiq Pay, so the ordinary
- * browser MetaMask and WalletConnect flows never see it and never require a NIM
- * payment. Every host operation happens behind its own button: nothing is
- * requested on page load and no account or payment call is chained.
+ * The component is presentational: all state lives in `useNimServiceFee` so a
+ * paid fee survives navigating between wizard steps. It renders nothing outside
+ * Nimiq Pay, which is what keeps the ordinary browser MetaMask and WalletConnect
+ * flow free of any NIM requirement.
+ *
+ * Every host interaction is an explicit tap on one of the two buttons below.
+ * Nothing is requested during render, and neither button chains into the other.
  */
-export function NimServiceFeePanel({
-  agreementNonce,
-}: {
-  agreementNonce: string;
-}) {
-  const [host, setHost] = useState(false);
-  const [stage, setStage] = useState<NimServiceFeeStage>("idle");
-  const [account, setAccount] = useState("");
-  const [reference, setReference] = useState("");
-  const [error, setError] = useState("");
-  const [recipient, setRecipient] = useState(ENV_RECIPIENT);
-
-  // Detection only. This reads window.nimiqPay, never imports the Mini App SDK
-  // and never asks the host for anything.
-  useEffect(() => {
-    setHost(getNimiqPayReadiness().host);
-  }, []);
-
-  const payload = nimServiceFeePayload(agreementNonce);
-  const recipientValid = isNimiqAddress(recipient);
-  const pending = stage === "pending";
-
-  const authorize = useCallback(async () => {
-    setStage("pending");
-    setError("");
-    try {
-      const accounts = await getNimiqAccounts();
-      const first = accounts[0];
-      if (first === undefined) {
-        setStage("failure");
-        setError("Nimiq Pay did not return an authorized account.");
-        return;
-      }
-      setAccount(first);
-      setStage("idle");
-    } catch (reason) {
-      console.warn("[veyronis:nimiq] account request failed", reason);
-      setStage("failure");
-      setError(nimServiceFeeMessage(reason));
-    }
-  }, []);
-
-  const pay = useCallback(async () => {
-    setStage("pending");
-    setError("");
-    setReference("");
-    try {
-      const result = await sendNimPayment({
-        recipient: normalizeNimiqAddress(recipient),
-        valueLuna: NIM_SERVICE_FEE_LUNA,
-        data: payload,
-      });
-      console.info("[veyronis:nimiq] service fee reference", result.reference);
-      setAccount(result.sender);
-      setReference(result.reference);
-      setStage("success");
-    } catch (reason) {
-      console.warn("[veyronis:nimiq] service fee failed", reason);
-      setStage("failure");
-      setError(nimServiceFeeMessage(reason));
-    }
-  }, [payload, recipient]);
-
-  if (!host) return null;
+export function NimServiceFeePanel({ fee }: { fee: NimServiceFeeState }) {
+  if (!fee.host) return null;
 
   return (
     <GlassCard className="nim-service-fee">
@@ -107,24 +31,24 @@ export function NimServiceFeePanel({
         <div>
           <strong>Nimiq Pay service fee</strong>
           <small>
-            Optional {NIM_SERVICE_FEE_LABEL} registration fee for this
-            agreement, paid in native NIM from your Nimiq Pay wallet.
+            {NIM_SERVICE_FEE_LABEL} in native NIM from your Nimiq Pay wallet is
+            required before this agreement can be created.
           </small>
         </div>
-        <StatusBadge tone={serviceFeeStageTone(stage)}>
-          {serviceFeeStageLabel(stage)}
+        <StatusBadge tone={serviceFeeStageTone(fee)}>
+          {serviceFeeStageLabel(fee)}
         </StatusBadge>
       </div>
       <p className="nim-service-fee-note">{NIM_SERVICE_FEE_DISCLOSURE}</p>
       <label className="nim-service-fee-field">
         Recipient Nimiq address
         <GlassInput
-          value={recipient}
-          onChange={(event) => setRecipient(event.target.value)}
+          value={fee.recipient}
+          onChange={(event) => fee.setRecipient(event.target.value)}
           placeholder="NQ07 ..."
           spellCheck={false}
           autoComplete="off"
-          disabled={pending}
+          disabled={fee.pending || fee.paid}
         />
       </label>
       <p className="nim-service-fee-warn">
@@ -141,92 +65,74 @@ export function NimServiceFeePanel({
         <div>
           <dt>Reference data</dt>
           <dd>
-            <code>{payload}</code> ({nimServiceFeePayloadBytes(agreementNonce)}{" "}
-            bytes)
+            <code>{fee.payload}</code> ({fee.payloadBytes} bytes)
           </dd>
         </div>
         <div>
           <dt>Authorized Nimiq wallet</dt>
           <dd>
-            {account === "" ? "Not requested yet" : <code>{account}</code>}
+            {fee.account === "" ? (
+              "Not requested yet"
+            ) : (
+              <code>{fee.account}</code>
+            )}
           </dd>
         </div>
       </dl>
       <div className="nim-service-fee-actions">
-        <GlassButton onClick={() => void authorize()} disabled={pending}>
-          {account === ""
+        <GlassButton onClick={fee.authorize} disabled={!fee.canAuthorize}>
+          {fee.account === ""
             ? "Authorize Nimiq Pay wallet"
             : "Re-check Nimiq Pay wallet"}
         </GlassButton>
         <GlassButton
           className="primary-button"
-          onClick={() => void pay()}
-          disabled={pending || !recipientValid}
+          onClick={fee.pay}
+          disabled={!fee.canPay}
         >
-          {pending
+          {fee.pending
             ? "Waiting for Nimiq Pay"
             : `Pay ${NIM_SERVICE_FEE_LABEL} service fee`}
         </GlassButton>
       </div>
-      {!recipientValid && (
+      {!fee.paid && !fee.recipientValid && (
         <p className="nim-service-fee-warn">
           Enter a complete NQ... Nimiq address to enable the payment.
         </p>
       )}
-      {stage === "success" && (
+      {fee.paid ? (
         <div className="nim-service-fee-result">
-          <strong>Nimiq Pay accepted the request</strong>
-          <span>{describeNimReference(reference)}</span>
-          <code>{reference}</code>
+          <strong>Service fee submitted</strong>
+          <span>
+            Nimiq Pay accepted the request. You can continue with this
+            agreement.
+          </span>
+          <span>{describeNimReference(fee.reference)}</span>
+          <code>{fee.reference}</code>
         </div>
-      )}
-      {error !== "" && (
+      ) : null}
+      {fee.error !== "" && (
         <p className="form-error" role="alert">
-          {error}
+          {fee.error}
         </p>
       )}
     </GlassCard>
   );
 }
 
-/** Normalizes a host failure into a message that is safe to show a user. */
-export function nimServiceFeeMessage(reason: unknown): string {
-  if (reason instanceof NimiqPayError && reason.code === "USER_REJECTED") {
-    return "You rejected the request in Nimiq Pay. No NIM was sent.";
-  }
-  if (reason instanceof NimiqPayError && reason.code === "INVALID_INPUT") {
-    return `The payment details were rejected before sending: ${reason.message}`;
-  }
-  if (reason instanceof Error && reason.message.length > 0) {
-    return reason.message;
-  }
-  return "The Nimiq Pay request failed.";
-}
-
-function serviceFeeStageLabel(stage: NimServiceFeeStage): string {
-  switch (stage) {
-    case "pending":
-      return "Waiting for Nimiq Pay";
-    case "success":
-      return "Request accepted";
-    case "failure":
-      return "Not completed";
-    default:
-      return "Optional";
-  }
+function serviceFeeStageLabel(fee: NimServiceFeeState): string {
+  if (fee.paid) return "Service fee submitted";
+  if (fee.pending) return "Waiting for Nimiq Pay";
+  if (fee.stage === "failure") return "Not completed";
+  if (fee.account === "") return "Authorization required";
+  return "Ready to pay";
 }
 
 function serviceFeeStageTone(
-  stage: NimServiceFeeStage,
+  fee: NimServiceFeeState,
 ): "blue" | "green" | "amber" | "red" {
-  switch (stage) {
-    case "pending":
-      return "amber";
-    case "success":
-      return "green";
-    case "failure":
-      return "red";
-    default:
-      return "blue";
-  }
+  if (fee.paid) return "green";
+  if (fee.pending) return "amber";
+  if (fee.stage === "failure") return "red";
+  return "blue";
 }
