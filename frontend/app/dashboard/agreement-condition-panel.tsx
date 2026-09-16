@@ -20,13 +20,17 @@ import {
 } from "ethers";
 import { HttpAgreementCreationClient } from "../agreement-client";
 import { StatusBadge } from "../ui/glass";
+import {
+  activeVerificationProvider,
+  providerVerificationLabel,
+} from "../verification/verification-provider";
 
 export interface TokenMetadata {
   symbol: string;
   decimals: number;
 }
 
-const verificationProviderName = "Attestcoin Protocol on Creditcoin";
+const verificationProviderName = activeVerificationProvider.label;
 const tokenMetadataFallbacks: Record<string, TokenMetadata> = {
   "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238": {
     symbol: "USDC",
@@ -771,9 +775,7 @@ export function verificationProviderLabel(
   details: AgreementConditionDetails,
   verified = false,
 ) {
-  return verified
-    ? `Verified by ${verificationProviderName}`
-    : verificationProviderName;
+  return providerVerificationLabel(verified);
 }
 
 export function isVerifiedOnChain(

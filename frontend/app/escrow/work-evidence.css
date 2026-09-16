@@ -18,3 +18,19 @@
 .submission-form{display:grid;gap:12px;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
 .review-note{display:grid;gap:6px;margin-top:12px}
 @media(max-width:900px){.work-evidence-layout{grid-template-columns:1fr}.requirement-row{grid-template-columns:1fr}.terms-editor>header,.terms-card-header{align-items:flex-start;flex-direction:column}}
+.nim-service-fee{display:grid;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
+.nim-service-fee-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.nim-service-fee-head small{display:block;color:var(--muted);margin-top:4px}
+.nim-service-fee-note,.nim-service-fee-warn{margin:0;color:#b8cce5;font-size:13px}
+.nim-service-fee-warn{color:#f0c674}
+.nim-service-fee-field{display:grid;gap:8px;color:var(--muted)}
+.nim-service-fee-field input{width:100%}
+.nim-service-fee-facts{display:grid;gap:10px;margin:0}
+.nim-service-fee-facts>div{display:grid;gap:2px}
+.nim-service-fee-facts dt{color:var(--muted);font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.nim-service-fee-facts dd{margin:0;color:#dce8f7}
+.nim-service-fee-facts code,.nim-service-fee-result code{word-break:break-all}
+.nim-service-fee-actions{display:flex;flex-wrap:wrap;gap:10px}
+.nim-service-fee-result{display:grid;gap:6px;padding:14px;border:1px solid var(--line);border-radius:8px;background:rgba(2,11,27,.38)}
+.nim-service-fee-result span{color:var(--muted)}
+.nim-service-fee-result code{color:#bfd4ec;font-size:12px}

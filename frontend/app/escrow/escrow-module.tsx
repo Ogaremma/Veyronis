@@ -41,6 +41,7 @@ import {
   type DeployAndFundStage,
 } from "./deploy-and-fund-flow";
 import { fundEscrow } from "./escrow-funding";
+import { NimServiceFeePanel } from "./nim-service-fee-panel";
 import {
   DeliverablesEditor,
   EvidenceRequirementsEditor,
@@ -669,6 +670,9 @@ function EscrowWizard({
           {step === 6 && (
             <ReviewStep form={form} draft={draft} preview={preview} />
           )}
+          {step === 6 && (
+            <NimServiceFeePanel agreementNonce={form.agreementNonce} />
+          )}
           {step === 7 && (
             <div className="deploy-success">
               <span>{"\u2713"}</span>
@@ -1042,9 +1046,9 @@ function ExternalBlockchainConditionStep({
       <aside className="evidence-note">
         <strong>Blockchain facts only</strong>
         <span>
-          Attestcoin and Creditcoin verify objective blockchain transactions.
-          They do not verify photographs, files, websites, GitHub work, or
-          physical delivery quality.
+          Attestcoin on Creditcoin is the verification provider used today. It
+          verifies objective blockchain transactions only, never photographs,
+          files, websites, GitHub work, or physical delivery quality.
         </span>
       </aside>
     </WizardSection>
