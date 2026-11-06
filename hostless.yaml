@@ -1,0 +1,27 @@
+build:
+  system: docker
+  min_cpu: 1
+  max_cpu: 2
+  min_memory: 1024
+  max_memory: 4096
+
+dockerfile_path: hostless.Dockerfile
+working_directory: /
+build_context_directory: /
+
+start_command: "node backend/dist/agreements/live-agreement-server.js"
+
+scaling:
+  trigger: http_requests
+  min_cpu: 0.01
+  max_cpu: 0.5
+  min_memory: 256
+  max_memory: 1024
+  min_replicas: 1
+  max_replicas: 1
+  max_http_requests_per_replica: 10
+
+health_check:
+  type: http
+  http_path: /health
+  interval_in_seconds: 10

@@ -18,6 +18,7 @@ import { AgreementConditionService } from "./agreement-condition-service.js";
 import { SqlAgreementConditionVerificationRepository } from "./agreement-condition-repository.js";
 import { createLiveAttestcoinVerifier } from "../attestcoin/live-verifier.js";
 import { SourceTransactionPolicyEvaluator } from "../attestcoin/source-transaction-interpreter.js";
+import { createGracefulShutdown } from "./graceful-shutdown.js";
 
 const config = loadAgreementServerConfig();
 const appConfig = loadConfig();
@@ -94,6 +95,15 @@ server.listen(config.BACKEND_PORT, config.BACKEND_HOST, () => {
     `Veyronis agreement backend listening on http://${config.BACKEND_HOST}:${config.BACKEND_PORT}`,
   );
 });
+
+const shutdown = createGracefulShutdown({ server, database });
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signal, () => {
+    void shutdown(signal).then((result) => {
+      if (result === "failed") process.exitCode = 1;
+    });
+  });
+}
 
 function createDatabasePool(connectionString: string): Pool {
   const url = new URL(connectionString);
